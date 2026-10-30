@@ -8,12 +8,15 @@
   # one namespace:
   #
   #   homeSpec.agents.skills.enabled   — build the merged skills tree
-  #     (external-systems/skills: its skills/ + the "hosts" preset of
-  #     external sources, composed by inputs.skills.lib.mkSkillsTree)
-  #     and wire it into every enabled
-  #     agent's skills dir. Defaults to true when any agent is enabled.
-  #   homeSpec.agents.skills.extraSources — per-machine external skill
-  #     sources appended after the preset.
+  #     (external-systems/skills: its skills/ + a preset of external
+  #     sources, composed by inputs.skills.lib.mkSkillsTree) and wire it
+  #     into every enabled agent's skills dir, with the skills runtime
+  #     (the tools their scripts call) installed next to it. Defaults to
+  #     true when any agent is enabled.
+  #   homeSpec.agents.skills.preset — "base" (skills/ only, the shared
+  #     default), "full" or "sandbox".
+  #   homeSpec.agents.skills.extraSources — the user's own picks,
+  #     appended after the preset (inputs.skills.lib.selections).
   #   homeSpec.agents.<agent>.enabled  — install pi / kimi / claude /
   #     opencode and point the agent's skills dir at the shared tree.
   flake.homeModules.agents = {
@@ -63,15 +66,22 @@
 
     # ---- Shared skills tree (homeSpec.agents.skills) ---- #
     # external-systems/skills composes its own skills/ tree with the
-    # fleet-wide "hosts" preset of external skill sources into one
-    # derivation (a linkFarm of per-skill symlinks), reused as the skills
-    # dir of every enabled agent below. Custom skills override external
-    # ones on name collision; among externals, earlier entries win.
-    # homeSpec.agents.skills.extraSources appends per-machine entries.
-    skillsDir = inputs.skills.lib.mkSkillsTree {
+    # chosen preset of external skill sources into one derivation (a
+    # linkFarm of per-skill symlinks), reused as the skills dir of every
+    # enabled agent below. Custom skills override external ones on name
+    # collision; among externals, earlier entries win.
+    # homeSpec.agents.skills.extraSources appends the user's own picks.
+    skillsComposition = {
       inherit pkgs;
-      inherit (cfg.skills) extraSources;
+      inherit (cfg.skills) preset extraSources;
     };
+    skillsDir = inputs.skills.lib.mkSkillsTree skillsComposition;
+    # Everything the scripts of that same composition call (python and
+    # node modules, CLIs, optionally LibreOffice).
+    skillsRuntime = inputs.skills.lib.mkSkillsRuntime (skillsComposition
+      // {
+        inherit (cfg.skills.runtime) office;
+      });
 
     # ---- Shared MCP bindings (homeSpec.agents.mcp.*) ---- #
     # PAT file used by the wrapper: explicit patFile override or the
@@ -243,6 +253,9 @@
         ""
         "Read a repo's AGENTS.md before working in it."
       ]
+      ++ lib.optionals (cfg.skills.enabled && cfg.skills.runtime.enable) [
+        "Skill script dependencies are preinstalled; don't pip/npm install them."
+      ]
       ++ lib.optionals (oc.machineContext.extraText != null)
       ([""]
         ++ lib.filter (line: line != "")
@@ -326,22 +339,55 @@
             || cfg.claude.enabled;
           description = ''
             Build the shared skills tree (external-systems/skills' skills/
-            merged with its "hosts" external sources via inputs.skills.lib.mkSkillsTree)
+            merged with the preset's external sources and extraSources via
+            inputs.skills.lib.mkSkillsTree)
             and wire it into every enabled agent's skills dir. Defaults to
             true when at least one agent is enabled.
+          '';
+        };
+        preset = lib.mkOption {
+          type = lib.types.enum (lib.attrNames inputs.skills.lib.externalSkills);
+          default = "base";
+          description = ''
+            External skill preset from external-systems/skills: "base"
+            (its own skills/ only, the shared default every user gets),
+            "full" (the former fleet-wide host set) or "sandbox" (the
+            code-agent image set). Users add their own picks with
+            extraSources.
           '';
         };
         extraSources = lib.mkOption {
           type = lib.types.listOf lib.types.attrs;
           default = [];
-          example = lib.literalExpression "[{src = inputs.skills.lib.sources.cloudflare;}]";
+          example = lib.literalExpression "with inputs.skills.lib.selections; anthropic ++ fluxcd ++ terraform";
           description = ''
-            External skill sources appended after the "hosts" preset —
-            e.g. {src = inputs.skills.lib.sources.cloudflare;}, optionally
-            with skillsDir and selectSkills for cherry-picking. Custom
-            skills override external ones on name collision; among
-            externals, earlier entries win.
+            External skill sources appended after the preset — usually
+            ready-made lists from inputs.skills.lib.selections, or
+            {src = inputs.skills.lib.sources.<name>;} entries with
+            skillsDir and selectSkills for cherry-picking. Custom skills
+            override external ones on name collision; among externals,
+            earlier entries win.
           '';
+        };
+        runtime = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Install the skills runtime (inputs.skills.lib.mkSkillsRuntime)
+              for the same composition: the executables, python and node
+              modules the installed skills' scripts call, plus NODE_PATH.
+            '';
+          };
+          office = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Include LibreOffice (about 2.5 GiB) when an installed skill
+              needs it (the docx/xlsx/pptx skills). Turn off to keep the
+              closure small at the cost of those skills' conversions.
+            '';
+          };
         };
       };
 
@@ -675,6 +721,14 @@
     };
 
     config = lib.mkMerge [
+      # ---- skills runtime ---- #
+      (lib.mkIf (cfg.skills.enabled && cfg.skills.runtime.enable) {
+        home = {
+          packages = [skillsRuntime];
+          sessionVariables = skillsRuntime.env;
+        };
+      })
+
       # ---- pi ---- #
       (lib.mkIf cfg.pi.enabled {
         home.packages = lib.optional cfg.pi.installPackage cfg.pi.package;

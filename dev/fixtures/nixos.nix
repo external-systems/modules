@@ -74,6 +74,10 @@
           kimi.enabled = true;
           claude.enabled = true;
           mcp.github.auth = "pat";
+          skills = {
+            preset = "full";
+            extraSources = inputs.skills.lib.selections.cloudflare;
+          };
         };
         programs = {
           devenv.enabled = true;
