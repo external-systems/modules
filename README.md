@@ -37,8 +37,7 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 
 ### What the consumer provides
 
-- **Overlay.** The modules read `pkgs.unstable` and packages built by the
-  consumer: `pkgs.openshell`, `pkgs.openshell-gateway`,
+- **Overlay.** The modules read packages built by the consumer: `pkgs.openshell`, `pkgs.openshell-gateway`,
   `pkgs.openshell-driver-vm`, `pkgs.code-sandbox`, `pkgs.devenv`,
   `pkgs.headroom-slim`, and for `homeModules.agents` `pkgs.pi-coding-agent`,
   `pkgs.kimi-code`, `pkgs.claude-code`, `pkgs.artifacthub-mcp` and
@@ -50,6 +49,12 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 - **clan-core.** `clan`, `git`, `ssh`, `storagebox` and `openshell-gateway`
   declare clan vars generators, so they need `clan.core` (any clan
   machine has it).
+- **Package choice.** Modules use plain `pkgs` and never pin a nixpkgs
+  branch. To take a package from elsewhere (e.g. unstable), set the
+  package option: the upstream one (`programs.ghostty.package`,
+  `services.tailscale.package`, ...) or this repo's
+  (`hostSpec.services.ollama.package`, `hostSpec.hardware.gpu.amd.packages`,
+  `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
 - **Fleet values.** `hostSpec.services.storagebox.boxUser` has no default;
   set it from the values flake.
 

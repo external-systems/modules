@@ -70,7 +70,6 @@
 
         git = {
           enable = true;
-          package = pkgs.unstable.gitFull;
           lfs.enable = true;
 
           ignores = [

@@ -14,8 +14,8 @@ _: {
         type = lib.types.package;
         default =
           if config.hostSpec.hardware.gpu.amd.enable
-          then pkgs.unstable.ollama-vulkan
-          else pkgs.unstable.ollama;
+          then pkgs.ollama-vulkan
+          else pkgs.ollama;
       };
       port = lib.mkOption {
         type = lib.types.int;

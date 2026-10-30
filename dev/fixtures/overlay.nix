@@ -1,9 +1,9 @@
 # Eval-only stand-ins for the attributes consumers' overlays provide
-# (external-systems/home: pkgs.unstable plus the repo-built packages).
+# (external-systems/home: the repo-built packages). No pkgs.unstable:
+# modules must work on plain nixpkgs.
 final: _prev: let
   stub = name: final.writeShellScriptBin name "exit 1";
 in {
-  unstable = final;
   openshell = stub "openshell";
   openshell-gateway = stub "openshell-gateway";
   openshell-driver-vm = stub "openshell-driver-vm";

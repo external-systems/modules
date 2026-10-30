@@ -19,11 +19,10 @@
       ];
       programs.vscodium = {
         enable = true;
-        package = pkgs.unstable.vscodium;
         mutableExtensionsDir = true;
         profiles = {
           default = {
-            extensions = with pkgs.unstable.vscode-extensions; [
+            extensions = with pkgs.vscode-extensions; [
               kamadorueda.alejandra
               jnoortheen.nix-ide
               redhat.vscode-yaml

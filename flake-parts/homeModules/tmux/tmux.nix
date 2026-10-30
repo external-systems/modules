@@ -17,8 +17,6 @@
       programs.tmux = {
         enable = true;
 
-        package = pkgs.unstable.tmux;
-
         # Set the prefix key. Overrules the "shortcut" option when set.
         prefix = "C-a";
 
@@ -40,7 +38,7 @@
         # Set the $TERM variable.
         terminal = "screen-256color";
 
-        plugins = with pkgs.unstable.tmuxPlugins; [
+        plugins = with pkgs.tmuxPlugins; [
           tmux-fzf
           pass
         ];

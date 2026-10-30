@@ -5,11 +5,7 @@
   ...
 }: {
   # ------ NixOS Modules ------ #
-  flake.nixosModules.docker = {
-    config,
-    pkgs,
-    ...
-  }: let
+  flake.nixosModules.docker = {config, ...}: let
     cfg = config.hostSpec.services.docker;
   in {
     options.hostSpec.services.docker.enable = lib.mkEnableOption "default docker configuration";
@@ -19,12 +15,10 @@
         oci-containers.backend = "docker";
         podman = {
           enable = true;
-          package = pkgs.unstable.podman;
           autoPrune.enable = true;
         };
         docker = {
           enable = true;
-          package = pkgs.unstable.docker;
           logDriver = "json-file";
           daemon.settings = {
             fixed-cidr-v6 = "fd00::/80";

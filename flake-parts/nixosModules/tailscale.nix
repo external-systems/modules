@@ -20,7 +20,6 @@
     config = lib.mkIf cfg.enable {
       services.tailscale = {
         inherit (cfg) enable;
-        package = pkgs.unstable.tailscale;
         openFirewall = true;
       };
       networking = {
@@ -66,7 +65,7 @@
           Type = "simple";
           Restart = "on-failure";
           RestartSec = "5s";
-          ExecStart = ''${pkgs.unstable.tailscale}/bin/tailscale systray'';
+          ExecStart = "${lib.getExe' config.services.tailscale.package "tailscale"} systray";
         };
       };
     };

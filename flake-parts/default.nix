@@ -11,10 +11,11 @@
 in {
   flake = {
     # ------ NixOS Modules ------ #
-    # Consumers provide pkgs: these modules read pkgs.unstable and the
-    # repo-built packages (pkgs.openshell*, pkgs.code-sandbox, pkgs.devenv,
-    # pkgs.headroom-slim, ...) from the consumer's overlay, so the
-    # overlay is applied by the consuming flake, not here.
+    # Consumers provide pkgs: these modules read the repo-built packages
+    # (pkgs.openshell*, pkgs.code-sandbox, pkgs.devenv, pkgs.headroom-slim,
+    # ...) from the consumer's overlay, so the overlay is applied by the
+    # consuming flake, not here. Package choice (stable vs unstable) is the
+    # consumer's: override the package options instead.
     nixosModules.default = {
       nixpkgs = {
         config.allowUnfree = lib.mkDefault true;

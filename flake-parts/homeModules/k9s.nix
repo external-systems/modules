@@ -17,7 +17,6 @@
       home.sessionVariables.K9S_SKIN = "dracula";
       programs.k9s = {
         enable = true;
-        package = pkgs.unstable.k9s;
         skins.dracula = pkgs.fetchurl {
           url = "https://raw.githubusercontent.com/derailed/k9s/refs/heads/master/skins/dracula.yaml";
           sha256 = "10is0kb0n6s0hd2lhyszrd6fln6clmhdbaw5faic5vlqg77hbjqs";

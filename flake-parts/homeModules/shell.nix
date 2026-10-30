@@ -5,11 +5,7 @@
   ...
 }: {
   # ------ Home-manager Modules ------ #
-  flake.homeModules.shell = {
-    config,
-    pkgs,
-    ...
-  }: let
+  flake.homeModules.shell = {config, ...}: let
     cfg = config.homeSpec.programs.shell;
   in {
     options.homeSpec.programs.shell.enable = lib.mkEnableOption "default shell configuration";
@@ -18,15 +14,12 @@
         # ------ Extras ------ #
         ripgrep = {
           enable = true;
-          package = pkgs.unstable.ripgrep;
         };
         eza = {
           enable = true;
-          package = pkgs.unstable.eza;
         };
         fzf = {
           enable = true;
-          package = pkgs.unstable.fzf;
         };
         # ------ Bash ------ #
         bash = {

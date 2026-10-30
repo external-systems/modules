@@ -100,7 +100,7 @@
       if [ -r ${lib.escapeShellArg githubMcpPatFile} ]; then
         export GITHUB_PERSONAL_ACCESS_TOKEN="$(cat ${lib.escapeShellArg githubMcpPatFile})"
       fi
-      exec ${lib.getExe pkgs.unstable.github-mcp-server} stdio "$@"
+      exec ${lib.getExe cfg.mcp.github.package} stdio "$@"
     '';
 
     # ---- Machine context (global AGENTS.md system-prompt header) ---- #
@@ -605,6 +605,7 @@
             default = true;
             description = "Enable the GitHub MCP server in every enabled agent.";
           };
+          package = lib.mkPackageOption pkgs "github-mcp-server" {};
           auth = lib.mkOption {
             type = lib.types.enum ["oauth" "pat"];
             default = "oauth";

@@ -1,10 +1,6 @@
 {lib, ...}: {
   # ------ NixOS Modules ------ #
-  flake.nixosModules.warp = {
-    pkgs,
-    config,
-    ...
-  }: let
+  flake.nixosModules.warp = {config, ...}: let
     cfg = config.hostSpec.networking.warp;
   in {
     options.hostSpec.networking.warp.enable = lib.mkEnableOption "default warp configuration";
@@ -19,7 +15,6 @@
       services = {
         cloudflare-warp = {
           enable = true;
-          package = pkgs.unstable.cloudflare-warp;
         };
         resolved = {
           enable = true;
