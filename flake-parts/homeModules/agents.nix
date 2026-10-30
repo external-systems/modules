@@ -13,8 +13,8 @@
   #     into every enabled agent's skills dir, with the skills runtime
   #     (the tools their scripts call) installed next to it. Defaults to
   #     true when any agent is enabled.
-  #   homeSpec.agents.skills.preset — "base" (skills/ only, the shared
-  #     default), "full" or "sandbox".
+  #   homeSpec.agents.skills.preset — "base" (the core own skills, the
+  #     shared default), "full" or "sandbox".
   #   homeSpec.agents.skills.extraSources — the user's own picks,
   #     appended after the preset (inputs.skills.lib.selections).
   #   homeSpec.agents.<agent>.enabled  — install pi / kimi / claude /
@@ -350,7 +350,7 @@
           default = "base";
           description = ''
             External skill preset from external-systems/skills: "base"
-            (its own skills/ only, the shared default every user gets),
+            (a core group of its own skills, the shared default every user gets),
             "full" (the former fleet-wide host set) or "sandbox" (the
             code-agent image set). Users add their own picks with
             extraSources.
