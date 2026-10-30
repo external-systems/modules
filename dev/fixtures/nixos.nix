@@ -68,6 +68,13 @@
       imports = [self.homeModules.default];
       homeSpec = {
         xdg.enable = true;
+        agents = {
+          opencode.enabled = true;
+          pi.enabled = true;
+          kimi.enabled = true;
+          claude.enabled = true;
+          mcp.github.auth = "pat";
+        };
         programs = {
           devenv.enabled = true;
           docker.enable = true;

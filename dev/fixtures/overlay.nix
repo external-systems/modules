@@ -10,4 +10,9 @@ in {
   code-sandbox = stub "code-sandbox";
   devenv = stub "devenv";
   headroom-slim = stub "headroom";
+  pi-coding-agent = stub "pi";
+  kimi-code = stub "kimi";
+  claude-code = stub "claude";
+  artifacthub-mcp = stub "artifacthub-mcp";
+  kubernetes-mcp-server = stub "kubernetes-mcp-server";
 }

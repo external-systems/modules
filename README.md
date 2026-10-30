@@ -39,8 +39,10 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 
 - **Overlay.** The modules read `pkgs.unstable` and packages built by the
   consumer: `pkgs.openshell`, `pkgs.openshell-gateway`,
-  `pkgs.openshell-driver-vm`, `pkgs.code-sandbox`, `pkgs.devenv` and
-  `pkgs.headroom-slim`. Apply an overlay that provides them (home's
+  `pkgs.openshell-driver-vm`, `pkgs.code-sandbox`, `pkgs.devenv`,
+  `pkgs.headroom-slim`, and for `homeModules.agents` `pkgs.pi-coding-agent`,
+  `pkgs.kimi-code`, `pkgs.claude-code`, `pkgs.artifacthub-mcp` and
+  `pkgs.kubernetes-mcp-server`. Apply an overlay that provides them (home's
   `overlays.default` does).
 - **plasma-manager.** `homeModules.plasma-manager` sets `programs.plasma`;
   add `inputs.plasma-manager.homeModules.plasma-manager` to
@@ -61,10 +63,10 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 
 ## Not here
 
-- The AI agent module (`homeModules.agents`, skills composition) and the
-  agent sandbox profiles stay in home for now; they go with the agent
-  skills split into
-  [external-systems/skills](https://github.com/external-systems/skills).
+- The agent sandbox profiles (`profile-agent*`) stay with the code-agent
+  image in home. The skills themselves live in
+  [external-systems/skills](https://github.com/external-systems/skills);
+  `homeModules.agents` consumes them through `inputs.skills.lib.mkSkillsTree`.
 - User profiles (`profile-netsa`, `profile-wife`, ...) stay with the
   machines in home.
 - The `lan`/`wan` networking modules are not carried over: they are

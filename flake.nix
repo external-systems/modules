@@ -32,6 +32,17 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Agent skills: homeModules.agents links the composed skills tree
+    # (lib.mkSkillsTree) into every enabled agent.
+    skills = {
+      url = "github:external-systems/skills";
+      inputs.pkgs.follows = "pkgs";
+    };
+
+    # MCP-NixOS: homeModules.agents' nixos MCP server. nixpkgs is NOT
+    # followed: its python overrides recurse on the pkgs nixpkgs pin.
+    mcp-nixos.url = "github:utensils/mcp-nixos";
+
     # Whisper Dictation: nixosModules.whisper-dictation wraps its package.
     # nixpkgs is deliberately NOT followed: the module re-wraps the
     # package against upstream's own pinned nixpkgs.
