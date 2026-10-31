@@ -20,6 +20,7 @@
       "inputs": {
         "nixpkgs-lib": [
           "presenting",
+          "org-pkgs",
           "nixpkgs"
         ]
       },
@@ -122,6 +123,28 @@
         "type": "github"
       }
     },
+    "org-pkgs": {
+      "inputs": {
+        "flake-parts": "flake-parts",
+        "import-tree": "import-tree",
+        "nixpkgs": [
+          "dev-nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793444658,
+        "narHash": "sha256-Fk+uJAmFS0FbZqH48EoqRifwiJM1Z1TlfX5f4hZS4/M=",
+        "owner": "external-systems",
+        "repo": "pkgs",
+        "rev": "e058d99fe9f04de4fc47ce892d0efbfebba7929b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "external-systems",
+        "repo": "pkgs",
+        "type": "github"
+      }
+    },
     "poetry2nix": {
       "inputs": {
         "flake-utils": "flake-utils",
@@ -150,20 +173,31 @@
     },
     "presenting": {
       "inputs": {
-        "flake-parts": "flake-parts",
-        "import-tree": "import-tree",
+        "flake-parts": [
+          "presenting",
+          "org-pkgs",
+          "flake-parts"
+        ],
+        "import-tree": [
+          "presenting",
+          "org-pkgs",
+          "import-tree"
+        ],
         "mkdocs-flake": "mkdocs-flake",
         "nixpkgs": [
-          "dev-nixpkgs"
+          "presenting",
+          "org-pkgs",
+          "nixpkgs"
         ],
+        "org-pkgs": "org-pkgs",
         "reveal-js": "reveal-js"
       },
       "locked": {
-        "lastModified": 1792467877,
-        "narHash": "sha256-xCiDHTepwhF4pcyB/sm1vPqXnXU4/Ydzw6Tu/h/nS6I=",
+        "lastModified": 1793448092,
+        "narHash": "sha256-9trY8O1dwLErztqJWTR44tisHywG/ngYGxiHhLgF/80=",
         "owner": "external-systems",
         "repo": "presenting",
-        "rev": "38c4535cb9080fdab2900da88442440181062d92",
+        "rev": "9edeeb79edbb11c3b1aa8f3444b7237b797dc493",
         "type": "github"
       },
       "original": {

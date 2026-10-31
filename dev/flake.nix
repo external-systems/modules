@@ -15,7 +15,9 @@
     # Docs + slides (documentation/flake-module.nix).
     presenting = {
       url = "github:external-systems/presenting";
-      inputs.nixpkgs.follows = "dev-nixpkgs";
+      # presenting takes nixpkgs from its org-pkgs; pin that one to
+      # dev-nixpkgs so the dev lock holds a single nixpkgs.
+      inputs.org-pkgs.inputs.nixpkgs.follows = "dev-nixpkgs";
     };
   };
 

@@ -44,7 +44,11 @@
 
     # MCP-NixOS: homeModules.agents' nixos MCP server. nixpkgs is NOT
     # followed: its python overrides recurse on the pkgs nixpkgs pin.
-    mcp-nixos.url = "github:utensils/mcp-nixos";
+    # flake-parts is eval-only, so it follows ours (two fewer lock nodes).
+    mcp-nixos = {
+      url = "github:utensils/mcp-nixos";
+      inputs.flake-parts.follows = "flake-parts";
+    };
 
     # Whisper Dictation: nixosModules.whisper-dictation wraps its package.
     # nixpkgs is deliberately NOT followed: the module re-wraps the
