@@ -12,7 +12,7 @@
       inputs.nixpkgs.follows = "dev-nixpkgs";
     };
 
-    # Docs + slides (documentation/module.nix).
+    # Docs + slides (documentation/flake-module.nix).
     presenting = {
       url = "github:external-systems/presenting";
       inputs.nixpkgs.follows = "dev-nixpkgs";

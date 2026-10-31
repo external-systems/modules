@@ -84,7 +84,7 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 | --- | --- |
 | `flake-parts/nixosModules/` | One NixOS module per file, auto-imported with import-tree |
 | `flake-parts/homeModules/` | One home-manager module per file |
-| `flake-parts/default.nix` | The `default` compositions |
+| `flake-parts/compositions.nix` | The `default` compositions |
 | `dev/` | The `dev` flake-parts partition: inputs (`dev/flake.nix`, `dev/flake.lock`), checks, formatter, docs, eval fixtures |
 | `devenv.yaml`, `devenv.nix` | The dev shell (devenv CLI, imports `org-pkgs/devenv`) |
 | `documentation/` | MkDocs site and reveal.js deck |

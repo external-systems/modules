@@ -7,7 +7,7 @@ vars, packages, overlays or fleet values. Every module is off until its
 
 ## Layout
 - `flake.nix`: consumer-facing inputs (all follow external-systems/pkgs where they can) and the dev partition wiring.
-- `flake-parts/nixosModules/`, `flake-parts/homeModules/`: one module per file, auto-imported (import-tree). `flake-parts/default.nix`: the `default` compositions.
+- `flake-parts/nixosModules/`, `flake-parts/homeModules/`: one module per file, auto-imported (import-tree). `flake-parts/compositions.nix`: the `default` compositions.
 - `dev/flake.nix` + `dev/flake.lock`: dev-only inputs. `dev/flake-module.nix`: the dev partition (formatter, checks, docs). `dev/fixtures/`, `dev/clan-stub.nix`: the eval-all-enabled machine and its stand-ins.
 - `devenv.yaml` + `devenv.lock` + `devenv.nix`: the dev shell. The org shell comes from external-systems/pkgs (`org-pkgs/devenv` in devenv.yaml).
 - `documentation/`: MkDocs site (`docs/`) and reveal.js deck (`slides/`).
