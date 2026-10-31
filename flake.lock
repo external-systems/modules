@@ -42,7 +42,7 @@
     "flake-parts_2": {
       "inputs": {
         "nixpkgs-lib": [
-          "pkgs",
+          "org-pkgs",
           "nixpkgs"
         ]
       },
@@ -239,18 +239,18 @@
         "type": "github"
       }
     },
-    "pkgs": {
+    "org-pkgs": {
       "inputs": {
         "flake-parts": "flake-parts_2",
         "import-tree": "import-tree",
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1793201675,
-        "narHash": "sha256-RnqS6DXV6uz9AJcRv8SEAJcSJamiuwgp1yvH+jNn2Z8=",
+        "lastModified": 1793401949,
+        "narHash": "sha256-Qy2v/b1PQVgpSLOt5svrh4obd+w01eGied8ynp1l1TU=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "9d3976c938b15d68aa3df625519459a3cafcaf59",
+        "rev": "c79334c26393e0dceb5277202cb6f21e51f79b93",
         "type": "github"
       },
       "original": {
@@ -285,21 +285,21 @@
     "root": {
       "inputs": {
         "flake-parts": [
-          "pkgs",
+          "org-pkgs",
           "flake-parts"
         ],
         "home-manager": "home-manager",
         "import-tree": [
-          "pkgs",
+          "org-pkgs",
           "import-tree"
         ],
         "jovian": "jovian",
         "mcp-nixos": "mcp-nixos",
         "nixpkgs": [
-          "pkgs",
+          "org-pkgs",
           "nixpkgs"
         ],
-        "pkgs": "pkgs",
+        "org-pkgs": "org-pkgs",
         "plasma-manager": "plasma-manager",
         "skills": "skills",
         "whisper-dictation": "whisper-dictation"
@@ -309,16 +309,16 @@
       "inputs": {
         "flake-parts": [
           "skills",
-          "pkgs",
+          "org-pkgs",
           "flake-parts"
         ],
         "nixpkgs": [
           "skills",
-          "pkgs",
+          "org-pkgs",
           "nixpkgs"
         ],
-        "pkgs": [
-          "pkgs"
+        "org-pkgs": [
+          "org-pkgs"
         ],
         "skills-anthropic": "skills-anthropic",
         "skills-cloudflare": "skills-cloudflare",
@@ -331,11 +331,11 @@
         "skills-terraform": "skills-terraform"
       },
       "locked": {
-        "lastModified": 1793385713,
-        "narHash": "sha256-9JxkjAZl0JvxoG76m30vPG1MpvFx+VXjnI8WskCkW1I=",
+        "lastModified": 1793404447,
+        "narHash": "sha256-gxL13x7AHaCsD+uKCgM9+1iBIdVqb3aCdhLB9AalD6M=",
         "owner": "external-systems",
         "repo": "skills",
-        "rev": "168e8971272e274800af1c3a84c220e64f573446",
+        "rev": "f9a30090cbf5f36f37c273458516cd80677fc412",
         "type": "github"
       },
       "original": {

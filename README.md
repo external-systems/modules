@@ -17,7 +17,7 @@ or the public placeholders in
 inputs.modules = {
   url = "github:external-systems/modules";
   inputs = {
-    pkgs.follows = "pkgs"; # if you already follow external-systems/pkgs
+    org-pkgs.follows = "org-pkgs"; # if you already follow external-systems/pkgs
     home-manager.follows = "home-manager";
   };
 };
@@ -85,19 +85,29 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 | `flake-parts/nixosModules/` | One NixOS module per file, auto-imported with import-tree |
 | `flake-parts/homeModules/` | One home-manager module per file |
 | `flake-parts/default.nix` | The `default` compositions |
-| `dev/` | The `dev` flake-parts partition: checks, formatter, devShell |
+| `dev/` | The `dev` flake-parts partition: inputs (`dev/flake.nix`, `dev/flake.lock`), checks, formatter, docs, eval fixtures |
+| `devenv.yaml`, `devenv.nix` | The dev shell (devenv CLI, imports `org-pkgs/devenv`) |
+| `documentation/` | MkDocs site and reveal.js deck |
 
 ## Development
 
+The repo follows the org flake standard. Needs Nix and devenv.
+
 ```sh
-nix fmt
-nix flake check
+devenv allow     # auto-activates the shell on cd (after `devenv hook`)
+fmt              # nix fmt: treefmt with the org linters
+check            # nix flake check: treefmt, lock-sync, eval, docs
+docs-build       # static docs to ./result-docs; open index.html from disk
 ```
 
-Checks, formatter and devShell sit in a flake-parts
-[partition](https://flake.parts/options/flake-parts-partitions.html), so
-consumers never evaluate them. `checks.lint` runs alejandra, statix and
-deadnix. `checks.eval-all-enabled` evaluates a machine with every
+Checks, formatter and docs sit in a flake-parts
+[partition](https://flake.parts/options/flake-parts-partitions.html) with
+its own inputs (treefmt-nix, presenting), so consumers never evaluate or
+lock them. `checks.treefmt` runs the org linters (alejandra, deadnix,
+statix, nixf-diagnose, shellcheck, sizelint); `checks.lock-sync` keeps
+`flake.lock`, `dev/flake.lock` and `devenv.lock` on one nixpkgs (after
+`nix flake update org-pkgs`, run `sync-locks`).
+`checks.eval-all-enabled` evaluates a machine with every
 `hostSpec` toggle and a user with every `homeSpec` toggle on, down to the
 system derivation, using stand-ins for the consumer overlay and for
 `clan.core` (`dev/fixtures/`, `dev/clan-stub.nix`).
