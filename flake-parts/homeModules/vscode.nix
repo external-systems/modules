@@ -14,8 +14,13 @@
   in {
     options.homeSpec.programs.vscode.enable = lib.mkEnableOption "default vscode configuration";
     config = lib.mkIf (cfg.enable && config.home.username != "root") {
+      # nixd: Nix IDE's language server (nixf diagnostics, option hints;
+      # per-repo settings in .vscode/settings.json). alejandra: its
+      # formatter and alejandra.program below.
       home.packages = with pkgs; [
+        alejandra
         gh
+        nixd
       ];
       programs.vscodium = {
         enable = true;

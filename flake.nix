@@ -54,6 +54,10 @@
 
   outputs = inputs:
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
+      # Exposes debug.options / currentSystem.options, which nixd
+      # (.vscode/settings.json) reads for flake-parts option hints.
+      debug = true;
+
       systems = [
         "x86_64-linux"
         "aarch64-linux"
