@@ -4,11 +4,14 @@
   inputs = {
     # Shared-input authority for the org: nixpkgs, flake-parts and
     # import-tree come from the artifact flake, so consumers that already
-    # follow pkgs lock nothing new.
-    pkgs.url = "github:external-systems/pkgs";
-    nixpkgs.follows = "pkgs/nixpkgs";
-    flake-parts.follows = "pkgs/flake-parts";
-    import-tree.follows = "pkgs/import-tree";
+    # follow it lock nothing new. Named org-pkgs, never pkgs: `pkgs` is
+    # the nixpkgs package set everywhere else.
+    org-pkgs.url = "github:external-systems/pkgs";
+    nixpkgs.follows = "org-pkgs/nixpkgs";
+    flake-parts.follows = "org-pkgs/flake-parts";
+    import-tree.follows = "org-pkgs/import-tree";
+
+    # Consumer-facing inputs only; dev-only inputs go in dev/flake.nix.
 
     # Home-manager: nixosModules.default imports its NixOS module, and the
     # git/ssh/openshell-gateway modules write home-manager.sharedModules.
@@ -36,7 +39,7 @@
     # (lib.mkSkillsTree) into every enabled agent.
     skills = {
       url = "github:external-systems/skills";
-      inputs.pkgs.follows = "pkgs";
+      inputs.org-pkgs.follows = "org-pkgs";
     };
 
     # MCP-NixOS: homeModules.agents' nixos MCP server. nixpkgs is NOT
@@ -51,6 +54,10 @@
 
   outputs = inputs:
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
+      # Exposes debug.options / currentSystem.options, which nixd
+      # (.vscode/settings.json) reads for flake-parts option hints.
+      debug = true;
+
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -62,14 +69,21 @@
         (inputs.import-tree ./flake-parts)
       ];
 
-      # Checks, formatter and devShell are evaluated only on demand; a
-      # consumer reading nixosModules/homeModules never touches them.
+      # Apps, checks, the formatter and docs are evaluated only on demand;
+      # a consumer reading nixosModules/homeModules never fetches
+      # dev/flake.nix's inputs. The dev shell is devenv (devenv.yaml), not
+      # a flake output.
       partitionedAttrs = {
+        apps = "dev";
         checks = "dev";
-        devShells = "dev";
         formatter = "dev";
+        # Docs/slides: `nix build .#documentation` (pkgs flakeModules.dev).
+        legacyPackages = "dev";
       };
 
-      partitions.dev.module = ./dev/flake-module.nix;
+      partitions.dev = {
+        module = ./dev/flake-module.nix;
+        extraInputsFlake = ./dev;
+      };
     };
 }

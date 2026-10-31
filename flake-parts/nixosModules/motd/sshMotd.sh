@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# Body of a writeShellApplication (motd.nix), which adds the shebang.
 # --- Color Definitions ---
 RESET='\e[0m'
 BOLD='\e[1m'
