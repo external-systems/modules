@@ -40,6 +40,10 @@
       nix-ld.enable = true;
       nix.enable = true;
       ollama.enable = true;
+      onepassword = {
+        enable = true;
+        polkitPolicyOwners = ["alice"];
+      };
       openshell.gateway.enable = true;
       openssh.enable = true;
       rancher.enable = true;

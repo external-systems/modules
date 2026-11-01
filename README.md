@@ -57,6 +57,11 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
 - **Fleet values.** `hostSpec.services.storagebox.boxUser` has no default;
   set it from the values flake.
+- **1Password.** `hostSpec.services.onepassword` enables
+  `programs._1password` (the setgid `op` at `/run/wrappers/bin/op`) and
+  `programs._1password-gui`; set `polkitPolicyOwners` to your users
+  (default `["andrew"]`). Don't also install `_1password-cli` as a
+  package: a Nix-store `op` first on `PATH` can't reach the desktop app.
 
 ### Defaults set by `default`
 
