@@ -12,7 +12,15 @@
   }: let
     cfg = config.homeSpec.programs.vscode;
   in {
-    options.homeSpec.programs.vscode.enable = lib.mkEnableOption "default vscode configuration";
+    options.homeSpec.programs.vscode = {
+      enable = lib.mkEnableOption "default vscode configuration";
+      nixdFlake = lib.mkOption {
+        type = with lib.types; nullOr str;
+        default = null;
+        example = "/home/alice/home";
+        description = "Absolute path of the machine flake that nixd reads nixpkgs and NixOS/home-manager/flake-parts options from (user-wide default; a repo's .vscode/settings.json overrides it). null leaves the option exprs unset.";
+      };
+    };
     config = lib.mkIf (cfg.enable && config.home.username != "root") {
       # nixd: Nix IDE's language server (nixf diagnostics, option hints;
       # per-repo settings in .vscode/settings.json). alejandra: its
@@ -129,24 +137,25 @@
               nix = {
                 enableLanguageServer = true;
                 # nixd replaces nil: flake-aware option completion. The
-                # per-user exprs point at the home flake (safe default for
+                # per-user exprs point at nixdFlake (safe default for
                 # arbitrary repos); per-repo .vscode/settings.json overrides
                 # per workspace (repo root carries one for this flake).
                 serverPath = "nixd";
                 formatterPath = "alejandra";
-                serverSettings.nixd = {
-                  formatting.command = ["alejandra"];
-                  nixpkgs.expr = "import (builtins.getFlake \"/home/netsa/home\").inputs.nixpkgs { }";
-                  options = {
-                    # `''${` keeps the hostname selector as literal text for
-                    # nixd to evaluate at LSP time (machine-agnostic config).
-                    nixos.expr = ''
-                      (builtins.getFlake "/home/netsa/home").nixosConfigurations.''${builtins.replaceStrings ["\n"] [""] (builtins.readFile /etc/hostname)}.options'';
-                    home-manager.expr = ''
-                      (builtins.getFlake "/home/netsa/home").nixosConfigurations.''${builtins.replaceStrings ["\n"] [""] (builtins.readFile /etc/hostname)}.options.home-manager.users.type.getSubOptions []'';
-                    flake-parts.expr = "(builtins.getFlake \"/home/netsa/home\").debug.options";
+                serverSettings.nixd =
+                  {formatting.command = ["alejandra"];}
+                  // lib.optionalAttrs (cfg.nixdFlake != null) {
+                    nixpkgs.expr = "import (builtins.getFlake \"${cfg.nixdFlake}\").inputs.nixpkgs { }";
+                    options = {
+                      # `''${` keeps the hostname selector as literal text for
+                      # nixd to evaluate at LSP time (machine-agnostic config).
+                      nixos.expr = ''
+                        (builtins.getFlake "${cfg.nixdFlake}").nixosConfigurations.''${builtins.replaceStrings ["\n"] [""] (builtins.readFile /etc/hostname)}.options'';
+                      home-manager.expr = ''
+                        (builtins.getFlake "${cfg.nixdFlake}").nixosConfigurations.''${builtins.replaceStrings ["\n"] [""] (builtins.readFile /etc/hostname)}.options.home-manager.users.type.getSubOptions []'';
+                      flake-parts.expr = "(builtins.getFlake \"${cfg.nixdFlake}\").debug.options";
+                    };
                   };
-                };
               };
             };
           };

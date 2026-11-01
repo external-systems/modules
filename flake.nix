@@ -51,9 +51,12 @@
     };
 
     # Whisper Dictation: nixosModules.whisper-dictation wraps its package.
-    # nixpkgs is deliberately NOT followed: the module re-wraps the
-    # package against upstream's own pinned nixpkgs.
-    whisper-dictation.url = "github:jacopone/whisper-dictation";
+    # Follows our nixpkgs, so the package and the typelibs the module adds
+    # come from one nixpkgs (one fewer nixpkgs in consumers' locks).
+    whisper-dictation = {
+      url = "github:jacopone/whisper-dictation";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:

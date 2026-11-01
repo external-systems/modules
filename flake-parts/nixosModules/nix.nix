@@ -22,7 +22,8 @@
           accept-flake-config = true;
           download-buffer-size = 524288000; # 500MB
           auto-optimise-store = true;
-          trusted-users = ["root" "netsa"];
+          # Consumers add their own users; the list merges.
+          trusted-users = ["root"];
           allowed-users = ["@wheel"];
 
           auto-allocate-uids = true;

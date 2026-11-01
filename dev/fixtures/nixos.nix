@@ -40,6 +40,10 @@
       nix-ld.enable = true;
       nix.enable = true;
       ollama.enable = true;
+      onepassword = {
+        enable = true;
+        polkitPolicyOwners = ["alice"];
+      };
       openshell.gateway.enable = true;
       openssh.enable = true;
       rancher.enable = true;
@@ -69,7 +73,14 @@
       homeSpec = {
         xdg.enable = true;
         agents = {
-          opencode.enabled = true;
+          opencode = {
+            enabled = true;
+            machineContext = {
+              repoOwner = "example";
+              repoName = "home";
+              repoPath = "home";
+            };
+          };
           pi.enabled = true;
           kimi.enabled = true;
           claude.enabled = true;
@@ -104,7 +115,10 @@
           };
           starship.enable = true;
           tmux.enable = true;
-          vscode.enable = true;
+          vscode = {
+            enable = true;
+            nixdFlake = "/home/alice/home";
+          };
           whisper-dictation.enable = true;
         };
       };

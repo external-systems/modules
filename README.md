@@ -55,8 +55,21 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `services.tailscale.package`, ...) or this repo's
   (`hostSpec.services.ollama.package`, `hostSpec.hardware.gpu.amd.packages`,
   `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
-- **Fleet values.** `hostSpec.services.storagebox.boxUser` has no default;
-  set it from the values flake.
+- **Users and fleet values.** No module names a user, host or account.
+  These have no default and must be set when their module is enabled:
+  `hostSpec.services.storagebox.boxUser` (from the values flake),
+  `hostSpec.services.onepassword.polkitPolicyOwners` and
+  `hostSpec.services.whisper-dictation.user`. Optional, off when unset:
+  `homeSpec.agents.opencode.machineContext.repoOwner`/`repoName`/`repoPath`
+  (the machine context's Repo line) and `homeSpec.programs.vscode.nixdFlake`
+  (nixd's option source). `hostSpec.services.nix` trusts only `root`; add
+  users with `nix.settings.trusted-users`. Personal shell aliases go in the
+  consumer's `programs.bash.shellAliases`.
+- **1Password.** `hostSpec.services.onepassword` enables
+  `programs._1password` (the setgid `op` at `/run/wrappers/bin/op`) and
+  `programs._1password-gui`; `polkitPolicyOwners` has no default, so
+  set it to the machine's users. Don't also install `_1password-cli` as a
+  package: a Nix-store `op` first on `PATH` can't reach the desktop app.
 
 ### Defaults set by `default`
 

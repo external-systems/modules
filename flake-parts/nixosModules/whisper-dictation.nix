@@ -7,7 +7,7 @@
   # only. The model lives in $HOME (see the whisper-dictation docs in external-systems/home);
   # config.yaml is managed declaratively by the home-manager module
   # flake.homeModules.whisper-dictation (homeSpec.programs.whisper-dictation).
-  # On kamrui-h1 the Samsers KT06 bluetooth keyboard is pinned via
+  # With several keyboards, pin the dictation one via
   # input_device: the daemon watches exactly one device, so the pin must
   # name the keyboard that triggers dictation.
   flake.nixosModules.whisper-dictation = {
@@ -20,17 +20,16 @@
 
     # Upstream's wrapper omits glib's typelib dir from GI_TYPELIB_PATH, so
     # pygobject cannot import Gtk (ui.py, imported at daemon startup).
-    # Re-wrap with the full Gtk-4.0 typelib closure; use upstream's own
-    # pinned nixpkgs for consistency. Missing dirs are harmless.
-    upstreamPkgs =
-      inputs.whisper-dictation.inputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+    # Re-wrap with the full Gtk-4.0 typelib closure. The input follows our
+    # nixpkgs, so pkgs' typelibs match the package. Missing dirs are
+    # harmless.
     package = pkgs.symlinkJoin {
       name = "whisper-dictation-vulkan";
       paths = [inputs.whisper-dictation.packages.${pkgs.stdenv.hostPlatform.system}.whisper-dictation-vulkan];
       nativeBuildInputs = [pkgs.makeWrapper];
       postBuild = let
         typelibDirs =
-          map (a: "${upstreamPkgs.${a}.out}/lib/girepository-1.0")
+          map (a: "${pkgs.${a}.out}/lib/girepository-1.0")
           ["glib" "graphene" "pango" "gdk-pixbuf" "cairo" "harfbuzz"];
       in ''
         wrapProgram $out/bin/whisper-dictation \
@@ -47,8 +46,8 @@
 
       user = lib.mkOption {
         type = lib.types.str;
-        default = "netsa";
-        description = "User that runs the daemon (input + ydotool groups, ConditionUser).";
+        example = "alice";
+        description = "User that runs the daemon (input + ydotool groups, ConditionUser). No default: set it per machine.";
       };
     };
 
