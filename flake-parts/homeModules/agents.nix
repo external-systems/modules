@@ -125,6 +125,8 @@
     # entry), so the facter-derived content is optional and everything
     # below stays lazy: nothing is read unless this user enables opencode.
     hasFacter = hostName != "" && facterFile != null && builtins.pathExists facterFile;
+    mc = oc.machineContext;
+    hasRepo = mc.repoOwner != null && mc.repoName != null;
     # A synthetic report (machineContext.facterReport, set by VM tests)
     # overrides the on-disk read; the accessors below work identically on
     # either shape.
@@ -242,14 +244,18 @@
       )
       ++ lib.optionals (machineContextHardware != [])
       (["Hardware:"] ++ machineContextHardware ++ [""])
-      ++ [
-        "Repo: github.com/${oc.machineContext.repoOwner}/${oc.machineContext.repoName} (local: ${config.home.homeDirectory}/${oc.machineContext.repoPath})"
+      ++ lib.optionals hasRepo [
+        "Repo: github.com/${mc.repoOwner}/${mc.repoName}${lib.optionalString (mc.repoPath != null) " (local: ${config.home.homeDirectory}/${mc.repoPath})"}"
       ]
       ++ lib.optionals hasFacter [
         "Machine facts: machines/${hostName}/facter.json, disko.nix, configuration.nix"
       ]
       ++ [
-        "Machine config is strictly read-only: changes only by repo owner ${oc.machineContext.repoOwner}, or when instructed to while working in the home repo."
+        (
+          if hasRepo
+          then "Machine config is strictly read-only: changes only by repo owner ${mc.repoOwner}, or when instructed to while working in the machine repo."
+          else "Machine config is strictly read-only: change it only when instructed to while working in the machine repo."
+        )
         ""
         "Read a repo's AGENTS.md before working in it."
       ]
@@ -527,19 +533,22 @@
             description = "Generate the global ~/.config/opencode/AGENTS.md machine context (hostname + environment + hardware facts from machineContext.facterFile).";
           };
           repoPath = lib.mkOption {
-            type = lib.types.str;
-            default = "home";
-            description = "Directory name of the home flake repo relative to the user's home directory, written into the generated file.";
+            type = with lib.types; nullOr str;
+            default = null;
+            example = "home";
+            description = "Directory name of the machine flake repo relative to the user's home directory, written into the generated file's Repo line. null leaves the local path out.";
           };
           repoOwner = lib.mkOption {
-            type = lib.types.str;
-            default = "andrewthomaslee";
-            description = "Owner of the remote flake repo, written into the generated file's Remote line.";
+            type = with lib.types; nullOr str;
+            default = null;
+            example = "my-org";
+            description = "Owner of the remote machine flake repo, written into the generated file's Repo line. The Repo line is written only when repoOwner and repoName are both set.";
           };
           repoName = lib.mkOption {
-            type = lib.types.str;
-            default = "home";
-            description = "Name of the remote flake repo, written into the generated file's Remote line.";
+            type = with lib.types; nullOr str;
+            default = null;
+            example = "home";
+            description = "Name of the remote machine flake repo, written into the generated file's Repo line. The Repo line is written only when repoOwner and repoName are both set.";
           };
           extraText = lib.mkOption {
             type = with lib.types; nullOr str;
@@ -658,7 +667,7 @@
           };
         };
         # ArtifactHub MCP server (local stdio, hermetic nix build; off by
-        # default, enabled via the netsa tag profile). Helm-chart tools
+        # default, enabled per user by the consumer). Helm-chart tools
         # against artifacthub.io: chart info, default values, templates.
         artifacthub.enable = lib.mkOption {
           type = lib.types.bool;
@@ -682,7 +691,7 @@
         };
 
         # (https://docs.mcp.varlock.dev/mcp, public, no auth). Off by
-        # default, enabled via the netsa tag profile. opencode-only: the
+        # default, enabled per user by the consumer. opencode-only: the
         # file-configured agents get only local servers (remote url MCP
         # support varies).
         varlock-docs.enable = lib.mkOption {
@@ -808,7 +817,7 @@
           # sets providers.*.base_url in config.toml itself). Requires the
           # proxy's OpenAI pipeline pinned at the managed service upstream
           # (homeSpec.programs.headroom.proxy.openaiApiUrl =
-          # https://api.kimi.ai/coding/v1 — the netsa profile sets it).
+          # https://api.kimi.ai/coding/v1 — the consumer sets it).
           sessionVariables = lib.mkIf (headroomRouteProviders && cfg.kimi.config == null) {
             KIMI_CODE_BASE_URL = headroomProxyUrl;
           };
@@ -856,7 +865,7 @@
           };
           # claude-code reads user-scope MCP servers from ~/.claude.json's
           # top-level mcpServers — the settings.json mcpServers table is
-          # IGNORED (verified with `claude mcp list` on kamrui-h1, 2026-10;
+          # IGNORED (verified with `claude mcp list`, 2026-10;
           # the settings.json write above stays as documentation / for
           # versions that do read it). ~/.claude.json is claude's mutable
           # state file, so HM can't own it — merge the shared set in at
@@ -946,7 +955,7 @@
                 }
                 {
                   action = "read";
-                  resource = "/home/netsa/.config/opencode/";
+                  resource = "${config.home.homeDirectory}/.config/opencode/";
                   effect = "allow";
                 }
                 {

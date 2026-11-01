@@ -73,7 +73,14 @@
       homeSpec = {
         xdg.enable = true;
         agents = {
-          opencode.enabled = true;
+          opencode = {
+            enabled = true;
+            machineContext = {
+              repoOwner = "example";
+              repoName = "home";
+              repoPath = "home";
+            };
+          };
           pi.enabled = true;
           kimi.enabled = true;
           claude.enabled = true;
@@ -108,7 +115,10 @@
           };
           starship.enable = true;
           tmux.enable = true;
-          vscode.enable = true;
+          vscode = {
+            enable = true;
+            nixdFlake = "/home/alice/home";
+          };
           whisper-dictation.enable = true;
         };
       };

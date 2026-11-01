@@ -7,7 +7,7 @@
   # only. The model lives in $HOME (see the whisper-dictation docs in external-systems/home);
   # config.yaml is managed declaratively by the home-manager module
   # flake.homeModules.whisper-dictation (homeSpec.programs.whisper-dictation).
-  # On kamrui-h1 the Samsers KT06 bluetooth keyboard is pinned via
+  # With several keyboards, pin the dictation one via
   # input_device: the daemon watches exactly one device, so the pin must
   # name the keyboard that triggers dictation.
   flake.nixosModules.whisper-dictation = {
@@ -47,8 +47,8 @@
 
       user = lib.mkOption {
         type = lib.types.str;
-        default = "netsa";
-        description = "User that runs the daemon (input + ydotool groups, ConditionUser).";
+        example = "alice";
+        description = "User that runs the daemon (input + ydotool groups, ConditionUser). No default: set it per machine.";
       };
     };
 
