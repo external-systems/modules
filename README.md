@@ -57,7 +57,7 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
 - **Fleet values.** `hostSpec.services.storagebox.boxUser` and
   `hostSpec.services.onepassword.polkitPolicyOwners` have no default;
-  set it from the values flake.
+  set them from the values flake.
 - **1Password.** `hostSpec.services.onepassword` enables
   `programs._1password` (the setgid `op` at `/run/wrappers/bin/op`) and
   `programs._1password-gui`; `polkitPolicyOwners` has no default, so
