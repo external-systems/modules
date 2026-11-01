@@ -20,8 +20,8 @@
 
       polkitPolicyOwners = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = ["andrew"];
-        description = "Users allowed to unlock 1Password with system authentication (polkit) and to use the CLI integration.";
+        example = ["alice"];
+        description = "Users allowed to unlock 1Password with system authentication (polkit) and to use the CLI integration. No default: set it per machine.";
       };
     };
 
