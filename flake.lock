@@ -284,11 +284,11 @@
         "skills-terraform": "skills-terraform"
       },
       "locked": {
-        "lastModified": 1793569523,
-        "narHash": "sha256-Wp8P3j6C1vEhlKgrXq5yLazaOVyf8S/O+4Lyh9WhjfM=",
+        "lastModified": 1793627354,
+        "narHash": "sha256-gdY/7/3sAkid6DTTzGmWEc1FdKhRd0/qzygu9l9Dzbo=",
         "owner": "external-systems",
         "repo": "skills",
-        "rev": "cfc633dedd8cd66daba3f89c377a63cfa5d136d5",
+        "rev": "265bf2c723d07da12479840e29eaa077f5ec0498",
         "type": "github"
       },
       "original": {
