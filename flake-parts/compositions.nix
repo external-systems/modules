@@ -45,8 +45,16 @@ in {
     # needs plasma-manager's own module; consumers add
     # inputs.plasma-manager.homeModules.plasma-manager (e.g. through
     # home-manager.sharedModules), as external-systems/home already does.
-    homeModules.default = {
-      nixpkgs.config.allowUnfree = lib.mkDefault true;
+    homeModules.default = {osConfig ? null, ...}: {
+      # Only when the user evaluates its own nixpkgs: under
+      # home-manager.useGlobalPkgs the NixOS pkgs are used, home-manager
+      # warns about any nixpkgs.* definition, and fails once both
+      # nixpkgs.config and nixpkgs.overlays are set.
+      # The mkIf sits on nixpkgs.config itself: the option's type is
+      # opaque, so a condition inside the attrset would still define it.
+      nixpkgs.config = lib.mkIf (!(osConfig.home-manager.useGlobalPkgs or false)) {
+        allowUnfree = lib.mkDefault true;
+      };
       home = {
         stateVersion = "26.11";
         keyboard.layout = "us";

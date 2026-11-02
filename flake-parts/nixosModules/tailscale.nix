@@ -11,6 +11,10 @@
     ...
   }: let
     cfg = config.hostSpec.networking.tailscale;
+    tailscaleGro = ''
+      NETDEV=$(${pkgs.iproute2}/bin/ip -o route get 8.8.8.8 | cut -f 5 -d " ")
+      ${pkgs.ethtool}/bin/ethtool -K "$NETDEV" rx-udp-gro-forwarding on rx-gro-list off
+    '';
   in {
     options.hostSpec.networking.tailscale = {
       enable = lib.mkEnableOption "default tailscale configuration";
@@ -29,14 +33,27 @@
           checkReversePath = "loose";
         };
       };
-      services.networkd-dispatcher = {
+      # UDP GRO forwarding on the default-route interface (Tailscale's
+      # exit-node/subnet-router throughput tuning), re-applied when a link
+      # comes up. Runs from whichever network manager the machine uses:
+      # networkd-dispatcher only fires under systemd-networkd, so
+      # NetworkManager machines get an NM dispatcher script instead.
+      networking.networkmanager.dispatcherScripts = lib.mkIf config.networking.networkmanager.enable [
+        {
+          type = "basic";
+          source = pkgs.writeShellScript "50-tailscale-gro" ''
+            [ "$2" = up ] || exit 0
+            ${tailscaleGro}
+          '';
+        }
+      ];
+      services.networkd-dispatcher = lib.mkIf (config.networking.useNetworkd || config.systemd.network.enable) {
         enable = true;
         rules."50-tailscale" = {
           onState = ["routable"];
           script = ''
             #!${pkgs.runtimeShell}
-            NETDEV=$(${pkgs.iproute2}/bin/ip -o route get 8.8.8.8 | cut -f 5 -d " ")
-            ${pkgs.ethtool}/bin/ethtool -K "$NETDEV" rx-udp-gro-forwarding on rx-gro-list off
+            ${tailscaleGro}
           '';
         };
       };

@@ -6,7 +6,7 @@
   #   - an rclone sftp remote "storagebox-<name>" (programs.rclone),
   #   - a FUSE mount under the user's home, run as a systemd *user* unit
   #     (no root, no allow_other: only this user sees the files),
-  #   - an ssh alias "storagebox-<name>" (programs.ssh.matchBlocks), so
+  #   - an ssh alias "storagebox-<name>" (programs.ssh.settings), so
   #     `ssh`, `sftp` and `rsync storagebox-<name>:path ...` just work.
   #
   # The login comes from the values flake in the consumer (no account ids
@@ -157,12 +157,15 @@
           active;
         };
 
-        ssh.matchBlocks = lib.mapAttrs' (name: b:
+        # programs.ssh.settings (upstream directive names); matchBlocks
+        # is deprecated in the pinned home-manager.
+        ssh.settings = lib.mapAttrs' (name: b:
           lib.nameValuePair "storagebox-${name}" {
-            hostname = b.host;
-            inherit (b) user port;
-            identityFile = b.keyFile;
-            identitiesOnly = true;
+            HostName = b.host;
+            User = b.user;
+            Port = b.port;
+            IdentityFile = b.keyFile;
+            IdentitiesOnly = true;
           })
         active;
       };

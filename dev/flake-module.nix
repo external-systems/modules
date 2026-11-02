@@ -52,7 +52,7 @@
         assert expect (mainUnit.Install.WantedBy == ["default.target"]) "main box does not start on login";
         assert expect (archiveUnit.Install.WantedBy == []) "manual box starts on login";
         assert expect (lib.hasInfix "storagebox-archive:BACKUPS" (toString archiveUnit.Service.ExecStart)) "remotePath not mounted";
-        assert expect (hm.programs.ssh.matchBlocks.storagebox-main.data.port == 23) "ssh alias missing";
+        assert expect (hm.programs.ssh.settings.storagebox-main.data.Port == 23) "ssh alias missing";
           pkgs.writeText "storagebox-per-user" "ok";
     };
   };
