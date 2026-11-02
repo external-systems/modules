@@ -30,7 +30,10 @@
       virtualization.nested.enable = true;
     };
     networking = {
-      optimization.enable = true;
+      optimization = {
+        enable = true;
+        bufferMax = 67108864;
+      };
       tailscale.enable = true;
       warp.enable = true;
     };
