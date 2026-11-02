@@ -57,14 +57,27 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
 - **Users and fleet values.** No module names a user, host or account.
   These have no default and must be set when their module is enabled:
-  `hostSpec.services.storagebox.boxUser` (from the values flake),
-  `hostSpec.services.onepassword.polkitPolicyOwners` and
+  each `homeSpec.programs.storagebox.boxes.<name>.{user,host}` (from the
+  values flake), `hostSpec.services.onepassword.polkitPolicyOwners` and
   `hostSpec.services.whisper-dictation.user`. Optional, off when unset:
   `homeSpec.agents.machineContext.repoOwner`/`repoName`/`repoPath`
   (the machine context's Repo line) and `homeSpec.programs.vscode.nixdFlake`
   (nixd's option source). `hostSpec.services.nix` trusts only `root`; add
   users with `nix.settings.trusted-users`. Personal shell aliases go in the
   consumer's `programs.bash.shellAliases`.
+- **Storage Boxes.** Mounts are per user. In a home-manager profile set
+  `homeSpec.programs.storagebox.enabled = true` and one
+  `boxes.<name> = {inherit (values.storageboxes.<box>.subAccounts.<user>) user host port;}`
+  per box (zero or more; the main account works the same way with
+  `values.storageboxes.<box>`). Each box becomes an rclone remote and a
+  FUSE mount at `~/storagebox/<name>` (a systemd user unit, started at
+  login or by hand with `startOn = "manual"`) and an ssh alias
+  `storagebox-<name>`, so `rsync storagebox-<name>:dir/ ./dir/` works.
+  `nixosModules.storagebox` declares one clan vars key per user,
+  `storagebox-ssh-<user>`; install its public half on each login with
+  `clan vars get <machine> storagebox-ssh-<user>/ssh-public-key | ssh -p23 <login>@<login>.your-storagebox.de install-ssh-key`.
+  Nothing mounts until that key is generated. The old host-level
+  `hostSpec.services.storagebox` is removed.
 - **1Password.** `hostSpec.services.onepassword` enables
   `programs._1password` (the setgid `op` at `/run/wrappers/bin/op`) and
   `programs._1password-gui`; `polkitPolicyOwners` has no default, so

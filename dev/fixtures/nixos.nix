@@ -47,10 +47,6 @@
       openshell.gateway.enable = true;
       openssh.enable = true;
       rancher.enable = true;
-      storagebox = {
-        enable = true;
-        boxUser = "u000000";
-      };
       wayland.enable = true;
       whisper-dictation = {
         enable = true;
@@ -112,6 +108,23 @@
             clanKey.enabled = true;
           };
           starship.enable = true;
+          storagebox = {
+            enabled = true;
+            boxes = {
+              # A sub-account mounted at login, and the main account on
+              # demand: both shapes the module supports.
+              main = {
+                user = "u000000-sub1";
+                host = "u000000-sub1.your-storagebox.de";
+              };
+              archive = {
+                user = "u000000";
+                host = "u000000.your-storagebox.de";
+                remotePath = "BACKUPS";
+                startOn = "manual";
+              };
+            };
+          };
           tmux.enable = true;
           vscode = {
             enable = true;
@@ -122,6 +135,9 @@
       };
     };
   };
+
+  # Pretend the Storage Box key is generated, so the user units render.
+  clan.core.vars.generators.storagebox-ssh-alice.files.ssh-public-key.exists = true;
 
   # Keep the eval focused on these modules.
   documentation.enable = lib.mkDefault false;
