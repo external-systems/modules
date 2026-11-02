@@ -9,7 +9,7 @@
 
       bufferMax = mkOption {
         type = types.ints.positive;
-        default = 16777216;
+        default = 33554432;
         example = 67108864;
         description = ''
           Per-socket TCP/UDP buffer ceiling in bytes (net.core.{r,w}mem_max
