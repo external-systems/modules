@@ -73,13 +73,11 @@
       homeSpec = {
         xdg.enable = true;
         agents = {
-          opencode = {
-            enabled = true;
-            machineContext = {
-              repoOwner = "example";
-              repoName = "home";
-              repoPath = "home";
-            };
+          opencode.enabled = true;
+          machineContext = {
+            repoOwner = "example";
+            repoName = "home";
+            repoPath = "home";
           };
           pi.enabled = true;
           kimi.enabled = true;

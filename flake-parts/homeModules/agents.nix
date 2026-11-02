@@ -119,20 +119,20 @@
       if osConfig == null
       then ""
       else osConfig.networking.hostName;
-    inherit (oc.machineContext) facterFile;
+    inherit (cfg.machineContext) facterFile;
     # Not every opencode consumer has a facter report (the installer ISO
     # has none, KubeVirt agent VMs have a hostname without a machines/
     # entry), so the facter-derived content is optional and everything
     # below stays lazy: nothing is read unless this user enables opencode.
     hasFacter = hostName != "" && facterFile != null && builtins.pathExists facterFile;
-    mc = oc.machineContext;
+    mc = cfg.machineContext;
     hasRepo = mc.repoOwner != null && mc.repoName != null;
     # A synthetic report (machineContext.facterReport, set by VM tests)
     # overrides the on-disk read; the accessors below work identically on
     # either shape.
     facterReport =
-      if oc.machineContext.facterReport != null
-      then oc.machineContext.facterReport
+      if cfg.machineContext.facterReport != null
+      then cfg.machineContext.facterReport
       else if hasFacter
       then builtins.fromJSON (builtins.readFile facterFile)
       else {};
@@ -222,8 +222,8 @@
     # detected via boot.isContainer (a real eval-time signal). Bare metal
     # emits no line (token-lean).
     machineContextEnvironment =
-      if oc.machineContext.environment != null
-      then "Environment: ${oc.machineContext.environment}"
+      if cfg.machineContext.environment != null
+      then "Environment: ${cfg.machineContext.environment}"
       else if (osConfig != null && (osConfig.boot.isContainer or false))
       then "Environment: nixos-container"
       else null;
@@ -262,10 +262,10 @@
       ++ lib.optionals (cfg.skills.enabled && cfg.skills.runtime.enable) [
         "Skill script dependencies are preinstalled; don't pip/npm install them."
       ]
-      ++ lib.optionals (oc.machineContext.extraText != null)
+      ++ lib.optionals (cfg.machineContext.extraText != null)
       ([""]
         ++ lib.filter (line: line != "")
-        (lib.splitString "\n" oc.machineContext.extraText));
+        (lib.splitString "\n" cfg.machineContext.extraText));
     # The same text rendered once, written to every enabled agent's
     # user-level instructions spot (see the config blocks below).
     machineContextText = lib.concatStringsSep "\n" machineContextLines + "\n";
@@ -397,6 +397,68 @@
         };
       };
 
+      # ---- Shared machine context: homeSpec.agents.machineContext.* ---- #
+      # Per-machine system-prompt context: generates user-level instructions
+      # for every enabled agent with the hostname, an optional environment
+      # annotation, hardware facts from the machine's facter.json and
+      # pointers to where machine facts live.
+      machineContext = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Generate user-level machine-context instructions for every enabled agent (hostname + environment + hardware facts from machineContext.facterFile).";
+        };
+        repoPath = lib.mkOption {
+          type = with lib.types; nullOr str;
+          default = null;
+          example = "home";
+          description = "Directory name of the machine flake repo relative to the user's home directory, written into the generated file's Repo line. null leaves the local path out.";
+        };
+        repoOwner = lib.mkOption {
+          type = with lib.types; nullOr str;
+          default = null;
+          example = "my-org";
+          description = "Owner of the remote machine flake repo, written into the generated file's Repo line. The Repo line is written only when repoOwner and repoName are both set.";
+        };
+        repoName = lib.mkOption {
+          type = with lib.types; nullOr str;
+          default = null;
+          example = "home";
+          description = "Name of the remote machine flake repo, written into the generated file's Repo line. The Repo line is written only when repoOwner and repoName are both set.";
+        };
+        extraText = lib.mkOption {
+          type = with lib.types; nullOr str;
+          default = null;
+          description = "Optional per-machine notes appended to the generated file (set from machines/<hostname>/configuration.nix).";
+        };
+        environment = lib.mkOption {
+          type = with lib.types; nullOr str;
+          default = null;
+          description = ''
+            Host-environment annotation written after the Machine line (e.g. "vm (KubeVirt guest)").
+            NixOS has no eval-time "this is a VM" marker, so VM images set this explicitly; NixOS
+            containers are auto-detected (boot.isContainer); bare metal stays null (no line).
+          '';
+        };
+        facterFile = lib.mkOption {
+          type = with lib.types; nullOr path;
+          default =
+            if osConfig == null
+            then null
+            else osConfig.hardware.facter.reportPath or null;
+          defaultText = lib.literalExpression "osConfig.hardware.facter.reportPath";
+          description = "nixos-facter report summarized into the machine context. Null skips the hardware lines.";
+        };
+        facterReport = lib.mkOption {
+          type = with lib.types; nullOr attrs;
+          default = null;
+          description = ''
+            Synthetic nixos-facter report overriding the facterFile read
+            (VM tests: the test hostname has no real report). Null reads the real file.
+          '';
+        };
+      };
+
       # ---- pi: homeSpec.agents.pi.* ---- #
       pi = {
         enabled = lib.mkEnableOption "the pi coding agent (badlogic/pi-mono)";
@@ -517,72 +579,7 @@
       };
 
       # ---- opencode: homeSpec.agents.opencode.* ---- #
-      opencode = {
-        enabled = lib.mkEnableOption "default opencode configuration";
-        # Per-machine system-prompt context (machineContext.*): generates
-        # the global ~/.config/opencode/AGENTS.md with the hostname, an
-        # optional environment annotation, hardware facts from the machine's
-        # facter.json and pointers to where machine facts live. opencode v2
-        # loads this file into every session's system prompt (the
-        # settings.instructions array is not resolved in v2 — see the
-        # machine-context comment above).
-        machineContext = {
-          enable = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = "Generate the global ~/.config/opencode/AGENTS.md machine context (hostname + environment + hardware facts from machineContext.facterFile).";
-          };
-          repoPath = lib.mkOption {
-            type = with lib.types; nullOr str;
-            default = null;
-            example = "home";
-            description = "Directory name of the machine flake repo relative to the user's home directory, written into the generated file's Repo line. null leaves the local path out.";
-          };
-          repoOwner = lib.mkOption {
-            type = with lib.types; nullOr str;
-            default = null;
-            example = "my-org";
-            description = "Owner of the remote machine flake repo, written into the generated file's Repo line. The Repo line is written only when repoOwner and repoName are both set.";
-          };
-          repoName = lib.mkOption {
-            type = with lib.types; nullOr str;
-            default = null;
-            example = "home";
-            description = "Name of the remote machine flake repo, written into the generated file's Repo line. The Repo line is written only when repoOwner and repoName are both set.";
-          };
-          extraText = lib.mkOption {
-            type = with lib.types; nullOr str;
-            default = null;
-            description = "Optional per-machine notes appended to the generated file (set from machines/<hostname>/configuration.nix).";
-          };
-          environment = lib.mkOption {
-            type = with lib.types; nullOr str;
-            default = null;
-            description = ''
-              Host-environment annotation written after the Machine line (e.g. "vm (KubeVirt guest)").
-              NixOS has no eval-time "this is a VM" marker, so VM images set this explicitly; NixOS
-              containers are auto-detected (boot.isContainer); bare metal stays null (no line).
-            '';
-          };
-          facterFile = lib.mkOption {
-            type = with lib.types; nullOr path;
-            default =
-              if osConfig == null
-              then null
-              else osConfig.hardware.facter.reportPath or null;
-            defaultText = lib.literalExpression "osConfig.hardware.facter.reportPath";
-            description = "nixos-facter report summarized into the machine context. Null skips the hardware lines.";
-          };
-          facterReport = lib.mkOption {
-            type = with lib.types; nullOr attrs;
-            default = null;
-            description = ''
-              Synthetic nixos-facter report overriding the facterFile read
-              (VM tests: the test hostname has no real report). Null reads the real file.
-            '';
-          };
-        };
-      };
+      opencode.enabled = lib.mkEnableOption "default opencode configuration";
 
       # ---- Shared MCP servers: homeSpec.agents.mcp.<name>.enable ---- #
       # ONE namespace, FOUR consumers: every server enabled here is
@@ -753,9 +750,9 @@
           # pi user instructions: ~/.pi/agent/AGENTS.md is applied
           # across working directories (pi configuration docs) — the
           # same machine context opencode gets via its global
-          # AGENTS.md. Gated on the opencode machineContext switch +
+          # AGENTS.md. Gated on the shared machineContext switch +
           # a resolvable hostname, same as the opencode write.
-          (lib.optionalAttrs (oc.machineContext.enable && hostName != "") {
+          (lib.optionalAttrs (cfg.machineContext.enable && hostName != "") {
             ".pi/agent/AGENTS.md".text = machineContextText;
           })
           # pi MCP servers: ~/.pi/agent/mcp.json (available in every
@@ -796,7 +793,7 @@
             })
             # kimi-code user-level AGENTS.md ($KIMI_CODE_HOME/AGENTS.md),
             # same machine context as the other agents.
-            (lib.optionalAttrs (oc.machineContext.enable && hostName != "") {
+            (lib.optionalAttrs (cfg.machineContext.enable && hostName != "") {
               ".kimi-code/AGENTS.md".text = machineContextText;
             })
             # kimi MCP servers: ~/.kimi-code/mcp.json, same shared set.
@@ -836,7 +833,7 @@
             # into every session — same machine context as the other
             # agents (claude.claudeMd overrides; a standalone eval never
             # fires this branch anyway).
-            (lib.optionalAttrs (oc.machineContext.enable && hostName != "" && cfg.claude.claudeMd == null) {
+            (lib.optionalAttrs (cfg.machineContext.enable && hostName != "" && cfg.claude.claudeMd == null) {
               ".claude/CLAUDE.md".text = machineContextText;
             })
             (lib.optionalAttrs (cfg.claude.claudeMd != null) {
@@ -907,7 +904,7 @@
           # but never resolved in v2 (see
           # services/www/src/docs/content/instructions.mdx at the pinned
           # opencode rev), so file instructions ride AGENTS.md.
-          "opencode/AGENTS.md" = lib.mkIf (oc.machineContext.enable && hostName != "") {
+          "opencode/AGENTS.md" = lib.mkIf (cfg.machineContext.enable && hostName != "") {
             text = machineContextText;
           };
 

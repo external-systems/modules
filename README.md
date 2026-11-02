@@ -39,7 +39,7 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 
 - **Overlay.** The modules read packages built by the consumer: `pkgs.openshell`, `pkgs.openshell-gateway`,
   `pkgs.openshell-driver-vm`, `pkgs.code-sandbox`, `pkgs.devenv`,
-  `pkgs.headroom-slim`, and for `homeModules.agents` `pkgs.pi-coding-agent`,
+  `pkgs.headroom-sandbox`, and for `homeModules.agents` `pkgs.pi-coding-agent`,
   `pkgs.kimi-code`, `pkgs.claude-code`, `pkgs.artifacthub-mcp` and
   `pkgs.kubernetes-mcp-server`. Apply an overlay that provides them (home's
   `overlays.default` does).
@@ -60,7 +60,7 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `hostSpec.services.storagebox.boxUser` (from the values flake),
   `hostSpec.services.onepassword.polkitPolicyOwners` and
   `hostSpec.services.whisper-dictation.user`. Optional, off when unset:
-  `homeSpec.agents.opencode.machineContext.repoOwner`/`repoName`/`repoPath`
+  `homeSpec.agents.machineContext.repoOwner`/`repoName`/`repoPath`
   (the machine context's Repo line) and `homeSpec.programs.vscode.nixdFlake`
   (nixd's option source). `hostSpec.services.nix` trusts only `root`; add
   users with `nix.settings.trusted-users`. Personal shell aliases go in the
