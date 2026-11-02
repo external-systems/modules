@@ -4,7 +4,7 @@
     inherit (lib) mkOption types;
   in {
     options.hostSpec.networking.optimization = {
-      enabled = lib.mkEnableOption "generic network performance optimizations";
+      enable = lib.mkEnableOption "generic network performance optimizations";
 
       wifi.powerSave = mkOption {
         type = types.bool;
@@ -13,7 +13,7 @@
       };
     };
 
-    config = lib.mkIf cfg.enabled {
+    config = lib.mkIf cfg.enable {
       boot = {
         kernelModules = ["tcp_bbr"];
         kernel.sysctl = lib.mapAttrs (_: lib.mkDefault) {

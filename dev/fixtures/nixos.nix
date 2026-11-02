@@ -30,7 +30,7 @@
       virtualization.nested.enable = true;
     };
     networking = {
-      optimization.enabled = true;
+      optimization.enable = true;
       tailscale.enable = true;
       warp.enable = true;
     };
