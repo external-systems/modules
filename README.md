@@ -39,7 +39,7 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 
 - **Overlay.** The modules read packages built by the consumer: `pkgs.openshell`, `pkgs.openshell-gateway`,
   `pkgs.openshell-driver-vm`, `pkgs.code-sandbox`, `pkgs.devenv`,
-  `pkgs.headroom-sandbox`, and for `homeModules.agents` `pkgs.pi-coding-agent`,
+  `pkgs.headroom-slim`, and for `homeModules.agents` `pkgs.pi-coding-agent`,
   `pkgs.kimi-code`, `pkgs.claude-code`, `pkgs.artifacthub-mcp` and
   `pkgs.kubernetes-mcp-server`. Apply an overlay that provides them (home's
   `overlays.default` does).

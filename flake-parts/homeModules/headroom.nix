@@ -11,8 +11,8 @@
       enable = lib.mkEnableOption "headroom context compression layer";
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.headroom-sandbox;
-        defaultText = lib.literalExpression "pkgs.headroom-sandbox";
+        default = pkgs.headroom-slim;
+        defaultText = lib.literalExpression "pkgs.headroom-slim";
         description = "The headroom package to install.";
       };
       proxy = {
