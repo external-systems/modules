@@ -100,6 +100,31 @@
         "type": "github"
       }
     },
+    "moscripts": {
+      "inputs": {
+        "nixpkgs": [
+          "presenting",
+          "org-pkgs",
+          "nixpkgs"
+        ],
+        "pyproject-build-systems": "pyproject-build-systems_2",
+        "pyproject-nix": "pyproject-nix_2",
+        "systems": "systems_3",
+        "uv2nix": "uv2nix_2"
+      },
+      "locked": {
+        "lastModified": 1776608080,
+        "narHash": "sha256-4vVq0KIJe/no8+6RMDLFgc6PhbsKas45+vvJBzkKw7k=",
+        "rev": "c7b7977f4494fc1d48eada86d6f8e9174a74d0e1",
+        "revCount": 77,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/andrewthomaslee/moscripts/0.1.0/019da619-cbca-7990-81d0-6071370e1994/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/andrewthomaslee/moscripts/%2A"
+      }
+    },
     "nix-github-actions": {
       "inputs": {
         "nixpkgs": [
@@ -127,16 +152,18 @@
       "inputs": {
         "flake-parts": "flake-parts",
         "import-tree": "import-tree",
+        "moscripts": "moscripts",
         "nixpkgs": [
           "dev-nixpkgs"
-        ]
+        ],
+        "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1793444658,
-        "narHash": "sha256-Fk+uJAmFS0FbZqH48EoqRifwiJM1Z1TlfX5f4hZS4/M=",
+        "lastModified": 1793666333,
+        "narHash": "sha256-mgGnU2A7gcLhPVu6gsMHJ4TqO5wHIDxV+6N9xbFfVE4=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "e058d99fe9f04de4fc47ce892d0efbfebba7929b",
+        "rev": "c66adf4c5f91d4da541ff9d896c86eb5414886c3",
         "type": "github"
       },
       "original": {
@@ -193,11 +220,11 @@
         "reveal-js": "reveal-js"
       },
       "locked": {
-        "lastModified": 1793448092,
-        "narHash": "sha256-9trY8O1dwLErztqJWTR44tisHywG/ngYGxiHhLgF/80=",
+        "lastModified": 1793668922,
+        "narHash": "sha256-p2XDFE6xC8JXVcV910EZCk0kWWp5l/2NyGDvYFzUNwI=",
         "owner": "external-systems",
         "repo": "presenting",
-        "rev": "9edeeb79edbb11c3b1aa8f3444b7237b797dc493",
+        "rev": "714681f88cd64435ec50c2cbde3fb293272a4146",
         "type": "github"
       },
       "original": {
@@ -238,6 +265,41 @@
         "type": "github"
       }
     },
+    "pyproject-build-systems_2": {
+      "inputs": {
+        "nixpkgs": [
+          "presenting",
+          "org-pkgs",
+          "moscripts",
+          "nixpkgs"
+        ],
+        "pyproject-nix": [
+          "presenting",
+          "org-pkgs",
+          "moscripts",
+          "pyproject-nix"
+        ],
+        "uv2nix": [
+          "presenting",
+          "org-pkgs",
+          "moscripts",
+          "uv2nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1756087852,
+        "narHash": "sha256-4jc3JDQt75fYXFrglgqyzF6C6zLU0QGLymzian4aP+U=",
+        "owner": "pyproject-nix",
+        "repo": "build-system-pkgs",
+        "rev": "6edb3ae27395cd88be3d64b732d1539957dad59c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pyproject-nix",
+        "repo": "build-system-pkgs",
+        "type": "github"
+      }
+    },
     "pyproject-nix": {
       "inputs": {
         "nixpkgs": [
@@ -252,6 +314,29 @@
         "owner": "pyproject-nix",
         "repo": "pyproject.nix",
         "rev": "6a8a7881d75b6f98967e7b8069f4ead331384301",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pyproject-nix",
+        "repo": "pyproject.nix",
+        "type": "github"
+      }
+    },
+    "pyproject-nix_2": {
+      "inputs": {
+        "nixpkgs": [
+          "presenting",
+          "org-pkgs",
+          "moscripts",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1756395552,
+        "narHash": "sha256-5aJM14MpoLk2cdZAetu60OkLQrtFLWTICAyn1EP7ZpM=",
+        "owner": "pyproject-nix",
+        "repo": "pyproject.nix",
+        "rev": "030dffc235dcf240d918c651c78dc5f158067b51",
         "type": "github"
       },
       "original": {
@@ -300,6 +385,21 @@
       }
     },
     "systems_2": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "systems_3": {
       "locked": {
         "lastModified": 1681028828,
         "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
@@ -381,6 +481,57 @@
       "original": {
         "owner": "pyproject-nix",
         "repo": "uv2nix",
+        "type": "github"
+      }
+    },
+    "uv2nix_2": {
+      "inputs": {
+        "nixpkgs": [
+          "presenting",
+          "org-pkgs",
+          "moscripts",
+          "nixpkgs"
+        ],
+        "pyproject-nix": [
+          "presenting",
+          "org-pkgs",
+          "moscripts",
+          "pyproject-nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1756466761,
+        "narHash": "sha256-ALXRHIMXQ4qVNfCbcWykC23MjMwUoHn9BreoBfqmq0Y=",
+        "owner": "pyproject-nix",
+        "repo": "uv2nix",
+        "rev": "0529e6d8227517205afcd1b37eee3088db745730",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pyproject-nix",
+        "repo": "uv2nix",
+        "type": "github"
+      }
+    },
+    "zen-browser": {
+      "inputs": {
+        "nixpkgs": [
+          "presenting",
+          "org-pkgs",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793356942,
+        "narHash": "sha256-3ddg7v2Ya11zEeQghXELyFwYIpv+nCTm2uVmu3LmvfU=",
+        "owner": "youwen5",
+        "repo": "zen-browser-flake",
+        "rev": "532b9a848c6b96d9f607e8856d1a458bdb7dcf66",
+        "type": "github"
+      },
+      "original": {
+        "owner": "youwen5",
+        "repo": "zen-browser-flake",
         "type": "github"
       }
     }
