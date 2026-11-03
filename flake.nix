@@ -11,7 +11,8 @@
     flake-parts.follows = "org-pkgs/flake-parts";
     import-tree.follows = "org-pkgs/import-tree";
 
-    # Consumer-facing inputs only; dev-only inputs go in dev/flake.nix.
+    # Consumer-facing inputs only. No dev inputs: formatting and docs come
+    # from org-pkgs (flakeModules.dev).
 
     # Home-manager: nixosModules.default imports its NixOS module, and the
     # git/ssh/openshell-gateway modules write home-manager.sharedModules.
@@ -71,26 +72,13 @@
       ];
 
       imports = [
-        inputs.flake-parts.flakeModules.partitions
+        # treefmt, docs + slides, lock-sync: everything from pkgs.
+        inputs.org-pkgs.flakeModules.dev
         inputs.home-manager.flakeModules.home-manager
         (inputs.import-tree ./flake-parts)
+        # Module eval checks and their fixtures.
+        ./tests/flake-module.nix
+        ./documentation/flake-module.nix
       ];
-
-      # Apps, checks, the formatter and docs are evaluated only on demand;
-      # a consumer reading nixosModules/homeModules never fetches
-      # dev/flake.nix's inputs. The dev shell is devenv (devenv.yaml), not
-      # a flake output.
-      partitionedAttrs = {
-        apps = "dev";
-        checks = "dev";
-        formatter = "dev";
-        # Docs/slides: `nix build .#documentation` (pkgs flakeModules.dev).
-        legacyPackages = "dev";
-      };
-
-      partitions.dev = {
-        module = ./dev/flake-module.nix;
-        extraInputsFlake = ./dev;
-      };
     };
 }
