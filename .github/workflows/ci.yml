@@ -1,0 +1,33 @@
+# Org standard CI: the external-systems/pkgs org-ci workflow. `nix flake
+# check` on PRs, the merge queue and main; on main, after it passes, the
+# docs/slides deploy to GitHub Pages and a 0.<minor>.<commits> release.
+#
+# Required status check for the ruleset: "ci / flake-check".
+#
+# Private flake inputs (e.g. external-systems/secrets): give the repo the
+# NIX_APP_ID + NIX_APP_PRIVATE_KEY org secrets and add
+# `private-repos: secrets` under `with:`.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ci:
+    uses: external-systems/pkgs/.github/workflows/org-ci.yml@main
+    # The union org-ci's jobs need; each job narrows it to its own.
+    permissions:
+      contents: write
+      actions: write
+      pages: write
+      id-token: write
+    with:
+      # Release series x in 0.x.y.
+      minor: 0
+    secrets: inherit
