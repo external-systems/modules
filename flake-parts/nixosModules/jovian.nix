@@ -55,10 +55,6 @@
 
     imports = [
       inputs.jovian.nixosModules.default
-      # Renamed: the option turns on Gaming Mode, not just a Steam UI.
-      (lib.mkRenamedOptionModule
-        ["hostSpec" "system" "jovian" "steamui"]
-        ["hostSpec" "system" "jovian" "gamingMode"])
     ];
 
     config = lib.mkIf cfg.enable {
