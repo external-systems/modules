@@ -133,7 +133,7 @@ docs-build       # static docs to ./result-docs; open index.html from disk
 ```
 
 The formatter, docs, slides and the org checks come from
-`org-pkgs.flakeModules.dev`, so the repo has no dev inputs and no dev
+`org-pkgs.flakeModules.default`, so the repo has no dev inputs and no dev
 partition. `checks.treefmt` runs the org linters (alejandra, deadnix,
 statix, nixf-diagnose, shellcheck, sizelint); `checks.lock-sync` keeps
 `flake.lock` and `devenv.lock` on one nixpkgs (after

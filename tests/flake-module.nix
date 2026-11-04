@@ -1,6 +1,6 @@
 # The module eval checks: every hostSpec/homeSpec toggle on, evaluated
 # against the fixtures here. Formatting, docs and lock-sync come from
-# org-pkgs flakeModules.dev (flake.nix). Checks are evaluated only on
+# org-pkgs flakeModules.default (flake.nix). Checks are evaluated only on
 # demand, so a consumer of nixosModules/homeModules never touches them.
 {
   inputs,
@@ -23,7 +23,7 @@
       ];
     };
   in {
-    # Formatting and lint: checks.treefmt (pkgs flakeModules.dev).
+    # Formatting and lint: checks.treefmt (pkgs flakeModules.default).
     # The fleet is x86_64-linux; jovian and the GPU modules are not meant
     # for aarch64.
     checks = lib.optionalAttrs (system == "x86_64-linux") {

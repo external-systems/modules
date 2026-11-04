@@ -12,7 +12,7 @@
     import-tree.follows = "org-pkgs/import-tree";
 
     # Consumer-facing inputs only. No dev inputs: formatting and docs come
-    # from org-pkgs (flakeModules.dev).
+    # from org-pkgs (flakeModules.default).
 
     # Home-manager: nixosModules.default imports its NixOS module, and the
     # git/ssh/openshell-gateway modules write home-manager.sharedModules.
@@ -73,7 +73,7 @@
 
       imports = [
         # treefmt, docs + slides, lock-sync: everything from pkgs.
-        inputs.org-pkgs.flakeModules.dev
+        inputs.org-pkgs.flakeModules.default
         inputs.home-manager.flakeModules.home-manager
         (inputs.import-tree ./flake-parts)
         # Module eval checks and their fixtures.

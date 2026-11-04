@@ -6,9 +6,9 @@ vars, packages, overlays or fleet values. Every module is off until its
 `hostSpec.*` (NixOS) or `homeSpec.*` (home-manager) option enables it.
 
 ## Layout
-- `flake.nix`: consumer-facing inputs (all follow external-systems/pkgs where they can) and the imports (`org-pkgs.flakeModules.dev`, the modules, tests and docs).
+- `flake.nix`: consumer-facing inputs (all follow external-systems/pkgs where they can) and the imports (`org-pkgs.flakeModules.default`, the modules, tests and docs).
 - `flake-parts/nixosModules/`, `flake-parts/homeModules/`: one module per file, auto-imported (import-tree). `flake-parts/compositions.nix`: the `default` compositions.
-- `tests/flake-module.nix`: the module eval checks; `tests/fixtures/`, `tests/clan-stub.nix`: the eval-all-enabled machine and its stand-ins. Formatting, docs and lock-sync come from `org-pkgs.flakeModules.dev` (no dev partition).
+- `tests/flake-module.nix`: the module eval checks; `tests/fixtures/`, `tests/clan-stub.nix`: the eval-all-enabled machine and its stand-ins. Formatting, docs and lock-sync come from `org-pkgs.flakeModules.default` (no dev partition).
 - `devenv.yaml` + `devenv.lock` + `devenv.nix`: the dev shell. The org shell comes from external-systems/pkgs (`org-pkgs/devenv` in devenv.yaml).
 - `documentation/`: MkDocs site (`docs/`) and reveal.js deck (`slides/slides.md`), built by `org-pkgs.flakeModules.docs`; `documentation/flake-module.nix` holds the `docs.*` settings.
 
