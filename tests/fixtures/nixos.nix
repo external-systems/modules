@@ -57,7 +57,12 @@
         user = "alice";
       };
     };
-    system.jovian.enable = true;
+    system.jovian = {
+      enable = true;
+      gamingMode = true;
+      user = "alice";
+      steamdeck = true;
+    };
   };
 
   users.users.alice = {

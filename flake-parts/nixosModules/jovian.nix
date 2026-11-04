@@ -16,12 +16,35 @@
   in {
     options.hostSpec.system.jovian = {
       enable = lib.mkEnableOption "default jovian configuration";
-      steamui = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = "Whether to enable steam big picture mode";
-        example = true;
+      gamingMode = lib.mkEnableOption ''
+        Steam Gaming Mode (Jovian's gamescope session, jovian.steam). The
+        machine boots straight into it as `user`; Switch to Desktop opens
+        `desktopSession`
+      '';
+      user = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "alice";
+        description = "User that Gaming Mode logs in as. Required when gamingMode is on.";
       };
+      desktopSession = lib.mkOption {
+        type = lib.types.str;
+        default =
+          if config.hostSpec.services.kde.enable or false
+          then "plasma"
+          else "gamescope-wayland";
+        defaultText = lib.literalExpression ''if hostSpec.services.kde.enable then "plasma" else "gamescope-wayland"'';
+        example = "plasma";
+        description = ''
+          Session that Gaming Mode's Switch to Desktop opens. Defaults to
+          Plasma (Wayland) when the kde module is on; "gamescope-wayland"
+          relaunches Gaming Mode instead.
+        '';
+      };
+      steamdeck = lib.mkEnableOption ''
+        Steam Deck hardware support (jovian.devices.steamdeck: controls,
+        fan, display, firmware)
+      '';
       amd = lib.mkOption {
         type = lib.types.bool;
         default = config.hostSpec.hardware.gpu.amd.enable or false;
@@ -32,16 +55,37 @@
 
     imports = [
       inputs.jovian.nixosModules.default
+      # Renamed: the option turns on Gaming Mode, not just a Steam UI.
+      (lib.mkRenamedOptionModule
+        ["hostSpec" "system" "jovian" "steamui"]
+        ["hostSpec" "system" "jovian" "gamingMode"])
     ];
 
     config = lib.mkIf cfg.enable {
-      # Valve vendor kernel for every jovian machine; steam is assumed with
-      # jovian, so this is the only kernelPackages definition in the tree.
-      boot.kernelPackages = pkgs.linuxPackages_jovian;
+      assertions = [
+        {
+          assertion = cfg.gamingMode -> cfg.user != null;
+          message = "hostSpec.system.jovian.gamingMode needs hostSpec.system.jovian.user: the user Gaming Mode logs in as.";
+        }
+      ];
+
+      # Valve vendor kernel by default for every jovian machine. mkDefault so
+      # a host whose GPU Valve does not test on (NVIDIA) can pick its own.
+      # On a Steam Deck, jovian.devices.steamdeck sets the same kernel at
+      # the same priority, which the unique option would reject.
+      boot.kernelPackages = lib.mkIf (!cfg.steamdeck) (lib.mkDefault pkgs.linuxPackages_jovian);
 
       jovian = {
         hardware.has.amd.gpu = cfg.amd;
-        steam.enable = cfg.steamui;
+        devices.steamdeck.enable = cfg.steamdeck;
+        # autoStart reuses SDDM (autologin, gamescope-wayland as default
+        # session), so it composes with the kde module. Without a user the
+        # assertion above reports it instead of a type error.
+        steam = lib.mkIf (cfg.gamingMode && cfg.user != null) {
+          enable = true;
+          autoStart = true;
+          inherit (cfg) user desktopSession;
+        };
       };
       services.orca.enable = false; # Disable screen reader
       networking.networkmanager.enable = lib.mkForce true; # Steam UI needs networkmanager
@@ -51,7 +95,6 @@
         xone.enable = true;
       };
       environment.systemPackages = with pkgs; [
-        cmake # Cross-platform, open-source build system generator
         steam-rom-manager # App for adding 3rd party games/ROMs as Steam launch items
         steam-run
         (pkgs.heroic.override {
@@ -76,6 +119,10 @@
       programs = {
         steam = {
           enable = true;
+          # Steam Input sends X11 events; extest turns them into uinput so
+          # a controller's desktop layout (stick/touchpad as mouse, buttons
+          # as keys) also drives native Wayland (Plasma) windows.
+          extest.enable = true;
           remotePlay.openFirewall = true;
           dedicatedServer.openFirewall = true;
           localNetworkGameTransfers.openFirewall = true;

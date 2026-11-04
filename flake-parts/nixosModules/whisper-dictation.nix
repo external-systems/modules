@@ -55,8 +55,9 @@
       # ydotoold system daemon (socket /run/ydotoold/socket) + ydotool CLI.
       programs.ydotool.enable = true;
 
-      # /dev/uinput must exist for ydotoold.
-      boot.kernelModules = ["uinput"];
+      # /dev/uinput must exist for ydotoold. hardware.uinput loads the
+      # module and adds the uinput group and udev rule.
+      hardware.uinput.enable = true;
 
       users.users.${cfg.user}.extraGroups = [
         "input" # evdev hotkey capture

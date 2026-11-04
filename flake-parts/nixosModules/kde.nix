@@ -39,6 +39,13 @@
 
       programs.xwayland.enable = true;
 
+      # The wayland module sets xdg.portal.config.common (wlr, gtk), which
+      # NixOS prefers over Plasma's own kde-portals.conf, so Plasma sessions
+      # lost the KDE portal: screen sharing, file dialogs, and the
+      # RemoteDesktop/InputCapture portals that Steam Remote Play and remote
+      # input use. A desktop-specific file wins over portals.conf.
+      xdg.portal.config.kde.default = ["kde" "gtk"];
+
       environment = {
         sessionVariables.NIXOS_OZONE_WL = "1";
         systemPackages = with pkgs; [
