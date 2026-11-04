@@ -71,8 +71,28 @@
       # the same priority, which the unique option would reject.
       boot.kernelPackages = lib.mkIf (!cfg.steamdeck) (lib.mkDefault pkgs.linuxPackages_jovian);
 
+      boot = {
+        # Wine/Proton's sync driver (/dev/ntsync, mode 0666 upstream): Proton
+        # 10 and GE use it when present; cuts CPU overhead in Windows games.
+        kernelModules = ["ntsync"];
+        kernel.sysctl."vm.swappiness" = lib.mkDefault 180; # zram, not disk
+      };
+
+      # Compressed RAM swap: big modpacks or a browser beside a game stop
+      # paging to disk.
+      zramSwap.enable = true;
+
+      # sched_ext scheduler tuned for interactive and gaming latency. The
+      # Valve kernel and nixpkgs kernels both build SCHED_CLASS_EXT.
+      services.scx = {
+        enable = true;
+        scheduler = "scx_lavd";
+      };
+
       jovian = {
         hardware.has.amd.gpu = cfg.amd;
+        # Plugin loader for Gaming Mode (overlays, per-game TDP).
+        decky-loader.enable = cfg.gamingMode;
         devices.steamdeck.enable = cfg.steamdeck;
         # autoStart reuses SDDM (autologin, gamescope-wayland as default
         # session), so it composes with the kde module. Without a user the
@@ -119,6 +139,8 @@
           # a controller's desktop layout (stick/touchpad as mouse, buttons
           # as keys) also drives native Wayland (Plasma) windows.
           extest.enable = true;
+          # Winetricks for Proton prefixes (fonts, runtimes, EA app fixes).
+          protontricks.enable = true;
           remotePlay.openFirewall = true;
           dedicatedServer.openFirewall = true;
           localNetworkGameTransfers.openFirewall = true;

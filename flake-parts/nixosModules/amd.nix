@@ -28,6 +28,9 @@ _: {
         amdgpu.initrd.enable = true;
         graphics.enable = true;
       };
+
+      # LACT: GUI for AMD fan curves, power limits and undervolting.
+      services.lact.enable = true;
     };
   };
 }
