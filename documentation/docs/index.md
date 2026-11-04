@@ -1,5 +1,11 @@
 # modules
 
+[![ci](https://img.shields.io/github/actions/workflow/status/external-systems/modules/ci.yml?branch=main&label=ci&logo=github)](https://github.com/external-systems/modules/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/external-systems/modules?label=release&color=d97757)](https://github.com/external-systems/modules/releases/latest)
+[![docs](https://img.shields.io/website?url=https%3A%2F%2Fmodules.external.systems%2F&label=docs&up_message=online&down_message=offline)](https://modules.external.systems/)
+[![license](https://img.shields.io/github/license/external-systems/modules)](https://github.com/external-systems/modules/blob/main/LICENSE)
+[![built with Nix](https://img.shields.io/badge/built_with-Nix-5277C3?logo=nixos&logoColor=white)](https://nixos.org)
+
 External Systems' reusable NixOS and home-manager modules, split out of
 `external-systems/home` so they are versioned on their own life cycle.
 Modules only: packages and overlays come from `external-systems/pkgs`,

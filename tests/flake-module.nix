@@ -1,17 +1,13 @@
-# Dev partition: the org base (treefmt, lock-sync, docs) from pkgs and
-# the module eval check. A consumer of nixosModules/homeModules never
-# evaluates it.
+# The module eval checks: every hostSpec/homeSpec toggle on, evaluated
+# against the fixtures here. Formatting, docs and lock-sync come from
+# org-pkgs flakeModules.default (flake.nix). Checks are evaluated only on
+# demand, so a consumer of nixosModules/homeModules never touches them.
 {
   inputs,
   lib,
   self,
   ...
 }: {
-  imports = [
-    inputs.org-pkgs.flakeModules.dev
-    ../documentation/flake-module.nix
-  ];
-
   perSystem = {
     pkgs,
     system,
@@ -27,7 +23,7 @@
       ];
     };
   in {
-    # Formatting and lint: checks.treefmt (pkgs flakeModules.dev).
+    # Formatting and lint: checks.treefmt (pkgs flakeModules.default).
     # The fleet is x86_64-linux; jovian and the GPU modules are not meant
     # for aarch64.
     checks = lib.optionalAttrs (system == "x86_64-linux") {

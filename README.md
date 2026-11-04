@@ -1,5 +1,11 @@
 # modules
 
+[![ci](https://img.shields.io/github/actions/workflow/status/external-systems/modules/ci.yml?branch=main&label=ci&logo=github)](https://github.com/external-systems/modules/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/external-systems/modules?label=release&color=d97757)](https://github.com/external-systems/modules/releases/latest)
+[![docs](https://img.shields.io/website?url=https%3A%2F%2Fmodules.external.systems%2F&label=docs&up_message=online&down_message=offline)](https://modules.external.systems/)
+[![license](https://img.shields.io/github/license/external-systems/modules)](https://github.com/external-systems/modules/blob/main/LICENSE)
+[![built with Nix](https://img.shields.io/badge/built_with-Nix-5277C3?logo=nixos&logoColor=white)](https://nixos.org)
+
 External Systems' reusable NixOS and home-manager modules, split out of
 [external-systems/home](https://github.com/external-systems/home) so they
 can be versioned on their own life cycle. This repo has modules only: no
@@ -111,9 +117,9 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
 | `flake-parts/nixosModules/` | One NixOS module per file, auto-imported with import-tree |
 | `flake-parts/homeModules/` | One home-manager module per file |
 | `flake-parts/compositions.nix` | The `default` compositions |
-| `dev/` | The `dev` flake-parts partition: inputs (`dev/flake.nix`, `dev/flake.lock`), checks, formatter, docs, eval fixtures |
+| `tests/` | The module eval checks and their fixtures (`fixtures/`, `clan-stub.nix`) |
 | `devenv.yaml`, `devenv.nix` | The dev shell (devenv CLI, imports `org-pkgs/devenv`) |
-| `documentation/` | MkDocs site and reveal.js deck |
+| `documentation/` | MkDocs site (`docs/*.md`) and deck (`slides/slides.md`); `flake-module.nix` holds the `docs.*` settings |
 
 ## Development
 
@@ -126,14 +132,13 @@ check            # nix flake check: treefmt, lock-sync, eval, docs
 docs-build       # static docs to ./result-docs; open index.html from disk
 ```
 
-Checks, formatter and docs sit in a flake-parts
-[partition](https://flake.parts/options/flake-parts-partitions.html) with
-its own inputs (treefmt-nix, presenting), so consumers never evaluate or
-lock them. `checks.treefmt` runs the org linters (alejandra, deadnix,
+The formatter, docs, slides and the org checks come from
+`org-pkgs.flakeModules.default`, so the repo has no dev inputs and no dev
+partition. `checks.treefmt` runs the org linters (alejandra, deadnix,
 statix, nixf-diagnose, shellcheck, sizelint); `checks.lock-sync` keeps
-`flake.lock`, `dev/flake.lock` and `devenv.lock` on one nixpkgs (after
+`flake.lock` and `devenv.lock` on one nixpkgs (after
 `nix flake update org-pkgs`, run `sync-locks`).
 `checks.eval-all-enabled` evaluates a machine with every
 `hostSpec` toggle and a user with every `homeSpec` toggle on, down to the
 system derivation, using stand-ins for the consumer overlay and for
-`clan.core` (`dev/fixtures/`, `dev/clan-stub.nix`).
+`clan.core` (`tests/fixtures/`, `tests/clan-stub.nix`).
