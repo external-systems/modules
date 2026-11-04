@@ -91,8 +91,10 @@
 
       jovian = {
         hardware.has.amd.gpu = cfg.amd;
-        # Plugin loader for Gaming Mode (overlays, per-game TDP).
-        decky-loader.enable = cfg.gamingMode;
+        # Plugin loader for Gaming Mode's Quick Access Menu. Deck only: its
+        # useful plugins (TDP, fan, battery) target handheld hardware, and it
+        # opens Steam's CEF debugger, so PCs stay without it.
+        decky-loader.enable = cfg.steamdeck && cfg.gamingMode;
         devices.steamdeck.enable = cfg.steamdeck;
         # autoStart reuses SDDM (autologin, gamescope-wayland as default
         # session), so it composes with the kde module. Without a user the
