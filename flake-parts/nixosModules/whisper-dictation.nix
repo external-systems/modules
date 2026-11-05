@@ -40,14 +40,19 @@
     options.hostSpec.services.whisper-dictation = {
       enable = lib.mkEnableOption ''
         whisper-dictation: local push-to-talk speech-to-text daemon
-        (whisper.cpp). Requires the user to be in the input group (granted
-        here) and a Whisper model in ~/.local/share/whisper/models.
+        (whisper.cpp). Requires each user to be in the input group (granted
+        here) and a Whisper model in their ~/.local/share/whisper/models.
       '';
 
-      user = lib.mkOption {
-        type = lib.types.str;
-        example = "alice";
-        description = "User that runs the daemon (input + ydotool groups, ConditionUser). No default: set it per machine.";
+      users = lib.mkOption {
+        type = lib.types.nonEmptyListOf lib.types.str;
+        example = ["alice" "bob"];
+        description = ''
+          Users that run the daemon: each gets the input and ydotool groups,
+          and the user unit starts only in their sessions. No default: set
+          it per machine. Each user also needs a model and config.yaml (the
+          home-manager module homeSpec.programs.whisper-dictation).
+        '';
       };
     };
 
@@ -59,14 +64,18 @@
       # module and adds the uinput group and udev rule.
       hardware.uinput.enable = true;
 
-      users.users.${cfg.user}.extraGroups = [
-        "input" # evdev hotkey capture
-        config.programs.ydotool.group # ydotool socket access
-      ];
+      users.users = lib.genAttrs cfg.users (_: {
+        extraGroups = [
+          "input" # evdev hotkey capture
+          config.programs.ydotool.group # ydotool socket access
+        ];
+      });
 
       systemd.user.services.whisper-dictation = {
         description = "Whisper Dictation - local push-to-talk speech-to-text";
-        unitConfig.ConditionUser = cfg.user; # other desktop users lack the groups
+        # Other desktop users lack the groups. "|" makes each a triggering
+        # condition: the unit starts when any one of them matches.
+        unitConfig.ConditionUser = map (user: "|${user}") cfg.users;
         after = ["graphical-session.target"];
         partOf = ["graphical-session.target"];
         wantedBy = ["graphical-session.target"];

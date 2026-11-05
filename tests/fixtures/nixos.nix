@@ -54,7 +54,7 @@
       wayland.enable = true;
       whisper-dictation = {
         enable = true;
-        user = "alice";
+        users = ["alice"];
       };
     };
     system.jovian = {
