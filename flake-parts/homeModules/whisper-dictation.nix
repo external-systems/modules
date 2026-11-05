@@ -45,9 +45,10 @@
     options.homeSpec.programs.whisper-dictation = {
       enable = lib.mkEnableOption ''
         whisper-dictation user configuration
-        (~/.config/whisper-dictation/config.yaml). Pairs with the NixOS
-        module flake.nixosModules.whisper-dictation, which provides the
-        daemon; this module does not install or run anything by itself.
+        (~/.config/whisper-dictation/config.yaml) and model. On a NixOS
+        host with flake.nixosModules.whisper-dictation, enabling this is
+        what turns the daemon on for this user: the NixOS module discovers
+        every home-manager user that enables it.
       '';
 
       inputDevice = lib.mkOption {
