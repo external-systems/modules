@@ -52,10 +52,6 @@
       openssh.enable = true;
       rancher.enable = true;
       wayland.enable = true;
-      whisper-dictation = {
-        enable = true;
-        users = ["alice"];
-      };
     };
     system.jovian = {
       enable = true;
