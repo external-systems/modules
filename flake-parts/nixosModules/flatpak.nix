@@ -20,7 +20,7 @@ _: {
         '';
       };
       environment.systemPackages = with pkgs; [
-        gnome-software # for flatpaks
+        kdePackages.discover # Flatpak store, integrated with Plasma
       ];
     };
   };

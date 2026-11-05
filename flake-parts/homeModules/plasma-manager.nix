@@ -26,7 +26,7 @@
           cursor.theme = "Bibata-Modern-Ice";
         };
         hotkeys.commands."launch-kalk" = {
-          name = "Launch Konsole";
+          name = "Launch Kalk";
           key = "Meta+Alt+K";
           command = "kalk";
         };

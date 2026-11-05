@@ -15,26 +15,14 @@
     options.hostSpec.services.wayland.enable = lib.mkEnableOption "default wayland configuration";
     config = lib.mkIf cfg.enable {
       # Turn on wayland support for some electron apps
-      environment.sessionVariables = {
-        LIBVA_DRIVER_NAME = "iHD";
-        NIXOS_OZONE_WL = "1";
-      };
+      environment.sessionVariables.NIXOS_OZONE_WL = "1";
 
-      # Extra portals (screensharing)
+      # GTK portal for GTK apps. The desktop picks its own backends (Plasma
+      # ships kde-portals.conf), so no global portals.conf is written here.
       xdg.portal = {
         enable = true;
-        config.common.default = [
-          "wlr"
-          "gtk"
-        ];
-        wlr.enable = true;
         extraPortals = [pkgs.xdg-desktop-portal-gtk];
       };
-
-      environment.systemPackages = with pkgs; [
-        xdg-desktop-portal
-        wdisplays # Configure screen placement
-      ];
     };
   };
 }

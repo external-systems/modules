@@ -54,10 +54,16 @@
       wayland.enable = true;
       whisper-dictation = {
         enable = true;
-        user = "alice";
+        users = ["alice"];
       };
     };
-    system.jovian.enable = true;
+    system.jovian = {
+      enable = true;
+      gamingMode = true;
+      user = "alice";
+      steamdeck = true;
+      powerProfile.profile = "performance";
+    };
   };
 
   users.users.alice = {

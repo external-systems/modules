@@ -16,11 +16,60 @@
   in {
     options.hostSpec.system.jovian = {
       enable = lib.mkEnableOption "default jovian configuration";
-      steamui = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = "Whether to enable steam big picture mode";
-        example = true;
+      gamingMode = lib.mkEnableOption ''
+        Steam Gaming Mode (Jovian's gamescope session, jovian.steam). The
+        machine boots straight into it as `user`; Switch to Desktop opens
+        `desktopSession`
+      '';
+      user = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "alice";
+        description = "User that Gaming Mode logs in as. Required when gamingMode is on.";
+      };
+      desktopSession = lib.mkOption {
+        type = lib.types.str;
+        default =
+          if config.hostSpec.services.kde.enable or false
+          then "plasma"
+          else "gamescope-wayland";
+        defaultText = lib.literalExpression ''if hostSpec.services.kde.enable then "plasma" else "gamescope-wayland"'';
+        example = "plasma";
+        description = ''
+          Session that Gaming Mode's Switch to Desktop opens. Defaults to
+          Plasma (Wayland) when the kde module is on; "gamescope-wayland"
+          relaunches Gaming Mode instead.
+        '';
+      };
+      steamdeck = lib.mkEnableOption ''
+        Steam Deck hardware support (jovian.devices.steamdeck: controls,
+        fan, display, firmware)
+      '';
+      powerProfile = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          example = false;
+          description = ''
+            Whether to set `profile` at every boot through power-profiles-daemon
+            (Plasma's Power Profile slider). Off leaves the daemon's last
+            choice in place. The slider still changes it until the next boot.
+          '';
+        };
+        profile = lib.mkOption {
+          type = lib.types.enum ["power-saver" "balanced" "performance"];
+          default =
+            if cfg.steamdeck
+            then "balanced"
+            else "performance";
+          defaultText = lib.literalExpression ''if steamdeck then "balanced" else "performance"'';
+          example = "power-saver";
+          description = ''
+            Power profile set at boot: "power-saver" (Power Save), "balanced"
+            (Balanced) or "performance" (Performance). Defaults to balanced on
+            a Steam Deck for battery life; set "performance" on a docked Deck.
+          '';
+        };
       };
       amd = lib.mkOption {
         type = lib.types.bool;
@@ -35,13 +84,65 @@
     ];
 
     config = lib.mkIf cfg.enable {
-      # Valve vendor kernel for every jovian machine; steam is assumed with
-      # jovian, so this is the only kernelPackages definition in the tree.
-      boot.kernelPackages = pkgs.linuxPackages_jovian;
+      assertions = [
+        {
+          assertion = cfg.gamingMode -> cfg.user != null;
+          message = "hostSpec.system.jovian.gamingMode needs hostSpec.system.jovian.user: the user Gaming Mode logs in as.";
+        }
+      ];
+
+      # Valve vendor kernel by default for every jovian machine. mkDefault so
+      # a host whose GPU Valve does not test on (NVIDIA) can pick its own.
+      # On a Steam Deck, jovian.devices.steamdeck sets the same kernel at
+      # the same priority, which the unique option would reject.
+      boot.kernelPackages = lib.mkIf (!cfg.steamdeck) (lib.mkDefault pkgs.linuxPackages_jovian);
+
+      boot = {
+        # Wine/Proton's sync driver (/dev/ntsync, mode 0666 upstream): Proton
+        # 10 and GE use it when present; cuts CPU overhead in Windows games.
+        kernelModules = ["ntsync"];
+        kernel.sysctl."vm.swappiness" = lib.mkDefault 180; # zram, not disk
+      };
+
+      # Plasma's power slider is power-profiles-daemon, which only remembers
+      # the last choice; set the chosen profile at every boot.
+      systemd.services.power-profile = lib.mkIf (cfg.powerProfile.enable && config.services.power-profiles-daemon.enable) {
+        description = "Set the ${cfg.powerProfile.profile} power profile";
+        after = ["power-profiles-daemon.service"];
+        requires = ["power-profiles-daemon.service"];
+        wantedBy = ["multi-user.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${lib.getExe' config.services.power-profiles-daemon.package "powerprofilesctl"} set ${cfg.powerProfile.profile}";
+        };
+      };
+
+      # Compressed RAM swap: big modpacks or a browser beside a game stop
+      # paging to disk.
+      zramSwap.enable = true;
+
+      # sched_ext scheduler tuned for interactive and gaming latency. The
+      # Valve kernel and nixpkgs kernels both build SCHED_CLASS_EXT.
+      services.scx = {
+        enable = true;
+        scheduler = "scx_lavd";
+      };
 
       jovian = {
         hardware.has.amd.gpu = cfg.amd;
-        steam.enable = cfg.steamui;
+        # Plugin loader for Gaming Mode's Quick Access Menu. Deck only: its
+        # useful plugins (TDP, fan, battery) target handheld hardware, and it
+        # opens Steam's CEF debugger, so PCs stay without it.
+        decky-loader.enable = cfg.steamdeck && cfg.gamingMode;
+        devices.steamdeck.enable = cfg.steamdeck;
+        # autoStart reuses SDDM (autologin, gamescope-wayland as default
+        # session), so it composes with the kde module. Without a user the
+        # assertion above reports it instead of a type error.
+        steam = lib.mkIf (cfg.gamingMode && cfg.user != null) {
+          enable = true;
+          autoStart = true;
+          inherit (cfg) user desktopSession;
+        };
       };
       services.orca.enable = false; # Disable screen reader
       networking.networkmanager.enable = lib.mkForce true; # Steam UI needs networkmanager
@@ -51,7 +152,6 @@
         xone.enable = true;
       };
       environment.systemPackages = with pkgs; [
-        cmake # Cross-platform, open-source build system generator
         steam-rom-manager # App for adding 3rd party games/ROMs as Steam launch items
         steam-run
         (pkgs.heroic.override {
@@ -76,6 +176,12 @@
       programs = {
         steam = {
           enable = true;
+          # Steam Input sends X11 events; extest turns them into uinput so
+          # a controller's desktop layout (stick/touchpad as mouse, buttons
+          # as keys) also drives native Wayland (Plasma) windows.
+          extest.enable = true;
+          # Winetricks for Proton prefixes (fonts, runtimes, EA app fixes).
+          protontricks.enable = true;
           remotePlay.openFirewall = true;
           dedicatedServer.openFirewall = true;
           localNetworkGameTransfers.openFirewall = true;
