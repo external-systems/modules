@@ -78,6 +78,20 @@
         kernel.sysctl."vm.swappiness" = lib.mkDefault 180; # zram, not disk
       };
 
+      # Start desktop gaming PCs on the Performance power profile (Plasma's
+      # slider is power-profiles-daemon). The daemon only remembers the last
+      # choice, so set it at every boot. Not on the Deck: battery.
+      systemd.services.power-profile-performance = lib.mkIf (!cfg.steamdeck && config.services.power-profiles-daemon.enable) {
+        description = "Set the Performance power profile";
+        after = ["power-profiles-daemon.service"];
+        requires = ["power-profiles-daemon.service"];
+        wantedBy = ["multi-user.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${lib.getExe' config.services.power-profiles-daemon.package "powerprofilesctl"} set performance";
+        };
+      };
+
       # Compressed RAM swap: big modpacks or a browser beside a game stop
       # paging to disk.
       zramSwap.enable = true;
