@@ -1,9 +1,10 @@
 _: {
   # ------ NixOS Modules ------ #
-  # The parts every NVIDIA machine shares. What depends on the card stays
-  # on the machine: hardware.nvidia.branch (e.g. legacy_580 for Pascal),
-  # hardware.nvidia.open = false before Turing, power management, a kernel
-  # pin and CUDA capabilities.
+  # The proprietary NVIDIA driver, set up from the machine's nixos-facter
+  # report: on when the report has an NVIDIA card, with the kernel module
+  # and driver branch that card's generation needs. What else depends on
+  # the machine stays there: power management, a kernel pin, CUDA
+  # capabilities.
   flake.nixosModules.nvidia = {
     config,
     pkgs,
@@ -11,9 +12,43 @@ _: {
     ...
   }: let
     cfg = config.hostSpec.hardware.gpu.nvidia;
+
+    # PCI device ids of the NVIDIA (0x10de) cards in the report. The
+    # oldest card decides, so every card in the machine is supported.
+    devices = map (card: card.device.value or 0) (lib.filter (card: (card.vendor.value or null) == 4318) (config.hardware.facter.report.hardware.graphics_card or []));
+    detected = devices != [];
+    oldest = lib.foldl' lib.min (lib.head devices) devices;
+
+    # Device ids by generation: Turing starts at 0x1e00 (the open kernel
+    # module needs Turing or newer); Maxwell, Pascal and Volta (0x1340 up
+    # to 0x1e00) stop at the 580 branch; Kepler and older at 470.
+    turingOrNewer = oldest >= 7680; # 0x1e00
+    maxwellOrNewer = oldest >= 4928; # 0x1340
   in {
     options.hostSpec.hardware.gpu.nvidia = {
-      enable = lib.mkEnableOption "the proprietary NVIDIA driver (X11 and Wayland)";
+      enable =
+        lib.mkEnableOption "the proprietary NVIDIA driver (X11 and Wayland)"
+        // {
+          default = detected;
+          defaultText = lib.literalMD "an NVIDIA graphics card in `hardware.facter.report`";
+        };
+      open = lib.mkOption {
+        type = lib.types.bool;
+        default = !detected || turingOrNewer;
+        defaultText = lib.literalMD "true for Turing (RTX 20, GTX 16) and newer in `hardware.facter.report`, false for older cards";
+        description = "Use NVIDIA's open kernel module (hardware.nvidia.open). It needs Turing or newer.";
+      };
+      branch = lib.mkOption {
+        type = lib.types.str;
+        default =
+          if !detected || turingOrNewer
+          then "stable"
+          else if maxwellOrNewer
+          then "legacy_580"
+          else "legacy_470";
+        defaultText = lib.literalMD ''"stable" for Turing and newer, "legacy_580" for Maxwell to Volta, "legacy_470" for Kepler, from `hardware.facter.report`'';
+        description = "Driver branch (hardware.nvidia.branch).";
+      };
       containerToolkit.enable = lib.mkOption {
         type = lib.types.bool;
         default = config.virtualisation.docker.enable || config.virtualisation.podman.enable;
@@ -36,10 +71,8 @@ _: {
         graphics.enable = true;
         nvidia-container-toolkit.enable = cfg.containerToolkit.enable;
         nvidia = {
+          inherit (cfg) open branch;
           modesetting.enable = lib.mkDefault true;
-          # NVIDIA recommends the open kernel module from Turing (RTX 20,
-          # GTX 16) on; older cards set it to false.
-          open = lib.mkDefault true;
         };
       };
     };

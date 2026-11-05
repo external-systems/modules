@@ -26,9 +26,6 @@
       bluetooth.enable = true;
       gpu = {
         amd.enable = true;
-        # No facter report here, so this only checks that it evaluates;
-        # checks.gpu-from-facter covers the detection.
-        fromFacter = true;
         intel.enable = true;
         nvidia.enable = true;
       };

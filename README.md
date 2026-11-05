@@ -62,14 +62,13 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   (`hostSpec.services.ollama.package`, `hostSpec.hardware.gpu.amd.packages`,
   `hostSpec.hardware.gpu.nvidia.packages`,
   `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
-- **GPUs from nixos-facter.** `hostSpec.hardware.gpu.fromFacter = true`
-  turns on `hostSpec.hardware.gpu.{amd,intel,nvidia}` for the graphics
-  cards in `hardware.facter.report` (clan sets it from
-  `machines/<name>/facter.json`). Card-specific NVIDIA settings stay on
-  the machine: `hardware.nvidia.branch`, and `hardware.nvidia.open = false`
-  before Turing. `hostSpec.hardware.cpu.intel.enable` is now
-  `hostSpec.hardware.gpu.intel.enable` (the old name still works, with a
-  warning).
+- **GPUs from nixos-facter.** `hostSpec.hardware.gpu.{amd,intel,nvidia}`
+  turn themselves on for the graphics cards in `hardware.facter.report`
+  (clan sets it from `machines/<name>/facter.json`); no tag or setting
+  needed. The NVIDIA module also picks the kernel module and driver
+  branch from the card: open and `stable` for Turing and newer, closed and
+  `legacy_580` for Maxwell to Volta (e.g. GTX 1070 Ti), `legacy_470` for
+  Kepler. Set `.enable`, `.open` or `.branch` to override.
 - **Users and fleet values.** No module names a user, host or account.
   These have no default and must be set when their module is enabled:
   each `homeSpec.programs.storagebox.boxes.<name>.{user,host}` (from the

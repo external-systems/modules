@@ -51,41 +51,46 @@
         assert expect (hm.programs.ssh.settings.storagebox-main.data.Port == 23) "ssh alias missing";
           pkgs.writeText "storagebox-per-user" "ok";
 
-      # GPU modules from a nixos-facter report: an NVIDIA card and an Intel
-      # iGPU come on, AMD stays off, and a machine can still opt out.
+      # GPU modules configure themselves from the nixos-facter report: a
+      # Pascal card (GTX 1070 Ti) gets the closed module and legacy_580, a
+      # Turing card the open module, an Intel iGPU comes on, AMD stays off,
+      # and a machine can still opt out.
       gpu-from-facter = let
-        gpuOf = extra:
+        configOf = nvidiaDevice: extra:
           (inputs.nixpkgs.lib.nixosSystem {
             modules = [
               self.nixosModules.amd
               self.nixosModules.intel
               self.nixosModules.nvidia
-              self.nixosModules.gpu
               {
                 nixpkgs.hostPlatform = system;
-                hostSpec.hardware.gpu.fromFacter = true;
                 hardware.facter.report.hardware.graphics_card = [
                   {
                     vendor.value = 4318; # 0x10de NVIDIA
+                    device.value = nvidiaDevice;
                     driver_modules = [];
                   }
                   {
                     vendor.value = 32902; # 0x8086 Intel
+                    device.value = 39497;
                     driver_modules = ["i915"];
                   }
                 ];
               }
               extra
             ];
-          }).config.hostSpec.hardware.gpu;
-        detected = gpuOf {};
-        optedOut = gpuOf {hostSpec.hardware.gpu.intel.enable = false;};
+          }).config;
+        pascal = configOf 7042 {}; # 0x1b82 GTX 1070 Ti
+        turing = configOf 7810 {}; # 0x1e82 RTX 2080
+        optedOut = configOf 7042 {hostSpec.hardware.gpu.intel.enable = false;};
         expect = cond: msg: lib.assertMsg cond "gpu-from-facter: ${msg}";
       in
-        assert expect detected.nvidia.enable "NVIDIA card not detected";
-        assert expect detected.intel.enable "Intel GPU not detected";
-        assert expect (!detected.amd.enable) "AMD on without an AMD card";
-        assert expect (!optedOut.intel.enable) "a machine cannot switch a detected GPU off";
+        assert expect pascal.hostSpec.hardware.gpu.nvidia.enable "NVIDIA card not detected";
+        assert expect pascal.hostSpec.hardware.gpu.intel.enable "Intel GPU not detected";
+        assert expect (!pascal.hostSpec.hardware.gpu.amd.enable) "AMD on without an AMD card";
+        assert expect (!pascal.hardware.nvidia.open && pascal.hardware.nvidia.branch == "legacy_580") "Pascal not on the closed module and legacy_580";
+        assert expect (turing.hardware.nvidia.open && turing.hardware.nvidia.branch == "stable") "Turing not on the open module and stable";
+        assert expect (!optedOut.hostSpec.hardware.gpu.intel.enable) "a machine cannot switch a detected GPU off";
           pkgs.writeText "gpu-from-facter" "ok";
     };
   };
