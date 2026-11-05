@@ -30,7 +30,6 @@
         nvidia.enable = true;
       };
       sound.enable = true;
-      virtualization.nested.enable = true;
     };
     networking = {
       optimization = {
