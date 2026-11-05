@@ -45,6 +45,32 @@
         Steam Deck hardware support (jovian.devices.steamdeck: controls,
         fan, display, firmware)
       '';
+      powerProfile = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          example = false;
+          description = ''
+            Whether to set `profile` at every boot through power-profiles-daemon
+            (Plasma's Power Profile slider). Off leaves the daemon's last
+            choice in place. The slider still changes it until the next boot.
+          '';
+        };
+        profile = lib.mkOption {
+          type = lib.types.enum ["power-saver" "balanced" "performance"];
+          default =
+            if cfg.steamdeck
+            then "balanced"
+            else "performance";
+          defaultText = lib.literalExpression ''if steamdeck then "balanced" else "performance"'';
+          example = "power-saver";
+          description = ''
+            Power profile set at boot: "power-saver" (Power Save), "balanced"
+            (Balanced) or "performance" (Performance). Defaults to balanced on
+            a Steam Deck for battery life; set "performance" on a docked Deck.
+          '';
+        };
+      };
       amd = lib.mkOption {
         type = lib.types.bool;
         default = config.hostSpec.hardware.gpu.amd.enable or false;
@@ -78,17 +104,16 @@
         kernel.sysctl."vm.swappiness" = lib.mkDefault 180; # zram, not disk
       };
 
-      # Start desktop gaming PCs on the Performance power profile (Plasma's
-      # slider is power-profiles-daemon). The daemon only remembers the last
-      # choice, so set it at every boot. Not on the Deck: battery.
-      systemd.services.power-profile-performance = lib.mkIf (!cfg.steamdeck && config.services.power-profiles-daemon.enable) {
-        description = "Set the Performance power profile";
+      # Plasma's power slider is power-profiles-daemon, which only remembers
+      # the last choice; set the chosen profile at every boot.
+      systemd.services.power-profile = lib.mkIf (cfg.powerProfile.enable && config.services.power-profiles-daemon.enable) {
+        description = "Set the ${cfg.powerProfile.profile} power profile";
         after = ["power-profiles-daemon.service"];
         requires = ["power-profiles-daemon.service"];
         wantedBy = ["multi-user.target"];
         serviceConfig = {
           Type = "oneshot";
-          ExecStart = "${lib.getExe' config.services.power-profiles-daemon.package "powerprofilesctl"} set performance";
+          ExecStart = "${lib.getExe' config.services.power-profiles-daemon.package "powerprofilesctl"} set ${cfg.powerProfile.profile}";
         };
       };
 

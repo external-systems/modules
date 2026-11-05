@@ -62,6 +62,7 @@
       gamingMode = true;
       user = "alice";
       steamdeck = true;
+      powerProfile.profile = "performance";
     };
   };
 
