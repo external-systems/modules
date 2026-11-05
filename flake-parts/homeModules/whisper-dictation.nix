@@ -19,10 +19,10 @@
     # and paste its "hash". "large" is absent: upstream loads
     # ggml-large.bin, which Hugging Face does not publish.
     modelHashes = {
-      tiny = lib.fakeHash;
-      base = lib.fakeHash;
-      small = lib.fakeHash;
-      medium = lib.fakeHash;
+      tiny = "sha256-vgfgSOHlma1GNByNKhNWRQl6U4IhZ4t6zdGxkZxuGyE=";
+      base = "sha256-YO1bw90U7qhWST0zQ0m0BXgt3K8AKNS130CINF+6Lv4=";
+      small = "sha256-G+OpsgY4Z7k35k4ux0gzZKeZF+FX+pjF2UtcH//qmHs=";
+      medium = "sha256-bBTVre5fhjlAN7Tk6LWfFnO2zuEOPPCxG72+55wVYgg=";
     };
 
     # Upstream (config.py) yaml.safe_load()s this file and merges it over
