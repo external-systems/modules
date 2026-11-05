@@ -50,6 +50,43 @@
         assert expect (lib.hasInfix "storagebox-archive:BACKUPS" (toString archiveUnit.Service.ExecStart)) "remotePath not mounted";
         assert expect (hm.programs.ssh.settings.storagebox-main.data.Port == 23) "ssh alias missing";
           pkgs.writeText "storagebox-per-user" "ok";
+
+      # GPU modules from a nixos-facter report: an NVIDIA card and an Intel
+      # iGPU come on, AMD stays off, and a machine can still opt out.
+      gpu-from-facter = let
+        gpuOf = extra:
+          (inputs.nixpkgs.lib.nixosSystem {
+            modules = [
+              self.nixosModules.amd
+              self.nixosModules.intel
+              self.nixosModules.nvidia
+              self.nixosModules.gpu
+              {
+                nixpkgs.hostPlatform = system;
+                hostSpec.hardware.gpu.fromFacter = true;
+                hardware.facter.report.hardware.graphics_card = [
+                  {
+                    vendor.value = 4318; # 0x10de NVIDIA
+                    driver_modules = [];
+                  }
+                  {
+                    vendor.value = 32902; # 0x8086 Intel
+                    driver_modules = ["i915"];
+                  }
+                ];
+              }
+              extra
+            ];
+          }).config.hostSpec.hardware.gpu;
+        detected = gpuOf {};
+        optedOut = gpuOf {hostSpec.hardware.gpu.intel.enable = false;};
+        expect = cond: msg: lib.assertMsg cond "gpu-from-facter: ${msg}";
+      in
+        assert expect detected.nvidia.enable "NVIDIA card not detected";
+        assert expect detected.intel.enable "Intel GPU not detected";
+        assert expect (!detected.amd.enable) "AMD on without an AMD card";
+        assert expect (!optedOut.intel.enable) "a machine cannot switch a detected GPU off";
+          pkgs.writeText "gpu-from-facter" "ok";
     };
   };
 }

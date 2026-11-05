@@ -60,7 +60,16 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   package option: the upstream one (`programs.ghostty.package`,
   `services.tailscale.package`, ...) or this repo's
   (`hostSpec.services.ollama.package`, `hostSpec.hardware.gpu.amd.packages`,
+  `hostSpec.hardware.gpu.nvidia.packages`,
   `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
+- **GPUs from nixos-facter.** `hostSpec.hardware.gpu.fromFacter = true`
+  turns on `hostSpec.hardware.gpu.{amd,intel,nvidia}` for the graphics
+  cards in `hardware.facter.report` (clan sets it from
+  `machines/<name>/facter.json`). Card-specific NVIDIA settings stay on
+  the machine: `hardware.nvidia.branch`, and `hardware.nvidia.open = false`
+  before Turing. `hostSpec.hardware.cpu.intel.enable` is now
+  `hostSpec.hardware.gpu.intel.enable` (the old name still works, with a
+  warning).
 - **Users and fleet values.** No module names a user, host or account.
   These have no default and must be set when their module is enabled:
   each `homeSpec.programs.storagebox.boxes.<name>.{user,host}` (from the
