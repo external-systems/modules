@@ -64,11 +64,15 @@
       wayland.enable = true;
     };
     system = {
+      developerSpecialisation.enable = true;
       # Gaming Mode logs in as the dedicated user (gaming.user), which
       # is declared because of it; alice and gamer share the libraries.
-      gaming.sharedLibraries = {
-        enable = true;
-        paths = ["/srv/games" "/mnt/games2"];
+      gaming = {
+        sharedLibraries = {
+          enable = true;
+          paths = ["/srv/games" "/mnt/games2"];
+        };
+        steamConfig.enable = true;
       };
       jovian = {
         enable = true;

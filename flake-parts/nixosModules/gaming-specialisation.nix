@@ -1,74 +1,104 @@
-# Gaming as a second boot entry. The default entry is the machine's own
-# system with the jovian module off; the "gaming" specialisation turns it
-# on (Valve kernel unless the machine pins one, Steam, gamescope, zram,
-# scx, ntsync, the boot power profile, Gaming Mode when
-# hostSpec.system.jovian.gamingMode is on). Anything else the gaming entry
-# needs, such as stopping services a developer system runs, goes in
-# `configuration`. Pick the entry in the boot menu (a kernel change needs
-# a reboot).
+# Boot entries for a machine that games and develops:
 #
-# A machine that enables this must not set hostSpec.system.jovian.enable
-# itself: this module owns it. Nested specialisations are ignored by
-# NixOS, so specialisations the machine defines exist only in the default
-# entry.
+# - desktop: the everyday desktop. The jovian module is on (Valve kernel
+#   unless the machine pins one, Steam on the KDE desktop, zram, scx,
+#   ntsync, the boot power profile), and the machine boots to the normal
+#   login screen.
+# - gaming: the same system, booting straight into Steam Gaming Mode
+#   (hostSpec.system.jovian.gamingMode) for couch play.
+# - "developer" specialisation (developer-specialisation.nix): jovian
+#   off, so the machine's normal kernel and no Steam.
+#
+# `defaultEntry` picks which of desktop and gaming is the machine's
+# default boot entry; the other one becomes a specialisation named after
+# it ("gaming" or "desktop"). A Steam Deck sets defaultEntry = "gaming".
+#
+# Anything else the gaming entry needs goes in `configuration`, which
+# only works while gaming is the specialisation: with defaultEntry =
+# "gaming" the machine's own configuration is the gaming entry. Pick the
+# entry in the boot menu (a kernel change needs a reboot). A machine that
+# enables this must not set hostSpec.system.jovian.enable itself: this
+# module owns it. Nested specialisations are ignored by NixOS, so
+# specialisations the machine defines exist only in the default entry.
 {
   flake.nixosModules.gaming-specialisation = {
     config,
     lib,
+    options,
     ...
   }: let
     cfg = config.hostSpec.system.gamingSpecialisation;
+    # `or`: works without nixosModules.developer-specialisation too.
+    developer = config.hostSpec.system.developerSpecialisation.active or false;
+    gamingDefault = cfg.defaultEntry == "gaming";
+    other =
+      if gamingDefault
+      then "desktop"
+      else "gaming";
   in {
     options.hostSpec.system.gamingSpecialisation = {
       enable = lib.mkEnableOption ''
-        a "gaming" boot entry (NixOS specialisation) next to the default
-        system; see this file's header
+        jovian in the desktop and gaming entries, with the gaming entry
+        booting into Steam Gaming Mode; see this file's header
       '';
-      diskSwap = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        example = true;
+      defaultEntry = lib.mkOption {
+        type = lib.types.enum ["desktop" "gaming"];
+        default = "desktop";
+        example = "gaming";
         description = ''
-          Whether disk swap (swapDevices) is used only in the gaming
-          entry, so the default entry runs without it as kubelet wants.
-          Off keeps swap as the machine defines it in both entries.
+          Which entry the machine boots by default. "desktop" boots the
+          KDE login screen and adds a "gaming" specialisation; "gaming"
+          boots Gaming Mode and adds a "desktop" specialisation (a Steam
+          Deck).
         '';
       };
       configuration = lib.mkOption {
         type = lib.types.deferredModule;
         default = {};
         example = lib.literalExpression ''
-          {lib, ...}: {
-            services.k3s.enable = lib.mkForce false;
+          {
+            services.flatpak.enable = false;
           }
         '';
         description = ''
-          NixOS module merged into the gaming entry only, on top of the
-          machine's own configuration: stop services the default entry
-          runs, change settings for gaming.
+          NixOS module merged into the gaming specialisation only, on top
+          of the machine's own configuration. Only for defaultEntry =
+          "desktop"; with "gaming", put it in the machine's configuration.
         '';
+      };
+      alternate = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        internal = true;
+        description = "True inside the desktop or gaming specialisation; set by this module, never by a machine.";
       };
       active = lib.mkOption {
         type = lib.types.bool;
         default = false;
         internal = true;
-        description = "True inside the gaming specialisation; set by this module, never by a machine.";
+        description = "True in the gaming entry, default or specialisation; set by this module, never by a machine.";
       };
     };
 
-    config = lib.mkIf cfg.enable (lib.mkMerge [
-      {
-        specialisation.gaming.configuration = {
-          imports = [cfg.configuration];
-          hostSpec.system.gamingSpecialisation.active = true;
-        };
-        hostSpec.system.jovian.enable = cfg.active;
-      }
-      # The parent's definitions are re-evaluated inside the specialisation
-      # with active = true, so this drops out there without a mkForce fight.
-      (lib.mkIf (!cfg.active && cfg.diskSwap) {
-        swapDevices = lib.mkForce [];
-      })
-    ]);
+    config = lib.mkIf cfg.enable {
+      assertions = [
+        {
+          assertion = gamingDefault -> options.hostSpec.system.gamingSpecialisation.configuration.highestPrio >= 1500;
+          message = ''
+            hostSpec.system.gamingSpecialisation.configuration only applies
+            to a gaming specialisation; with defaultEntry = "gaming" the
+            machine's own configuration is the gaming entry.
+          '';
+        }
+      ];
+      specialisation.${other}.configuration = {
+        imports = lib.optional (!gamingDefault) cfg.configuration;
+        hostSpec.system.gamingSpecialisation.alternate = true;
+      };
+      hostSpec.system = {
+        gamingSpecialisation.active = !developer && (gamingDefault != cfg.alternate);
+        jovian.enable = !developer;
+      };
+    };
   };
 }

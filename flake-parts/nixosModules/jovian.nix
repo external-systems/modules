@@ -7,7 +7,11 @@
     ...
   }: let
     cfg = config.hostSpec.system.jovian;
-    inherit (cfg) gamingMode;
+    # With the gaming specialisation on, Gaming Mode boots only in its
+    # "gaming" entry; the default entry keeps the normal login screen.
+    # `or`: works without nixosModules.gaming-specialisation too.
+    spec = config.hostSpec.system.gamingSpecialisation or {};
+    gamingMode = cfg.gamingMode && ((spec.enable or false) -> (spec.active or false));
 
     pureGamescope =
       (import pkgs.path {
@@ -21,7 +25,9 @@
         Steam Gaming Mode (Jovian's gamescope session, jovian.steam): the
         machine boots straight into it, logged in as `user`, and Switch
         to Desktop opens `desktopSession` as that same user. Off boots to
-        the normal login screen (SDDM)
+        the normal login screen (SDDM). With
+        hostSpec.system.gamingSpecialisation on, only its "gaming" entry
+        boots into Gaming Mode
       '';
       user = lib.mkOption {
         type = lib.types.str;
