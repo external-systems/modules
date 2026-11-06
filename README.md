@@ -78,10 +78,26 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   values flake), `hostSpec.services.onepassword.polkitPolicyOwners` and
   `hostSpec.services.whisper-dictation.user`. Optional, off when unset:
   `homeSpec.agents.machineContext.repoOwner`/`repoName`/`repoPath`
-  (the machine context's Repo line) and `homeSpec.programs.vscode.nixdFlake`
+  (the machine context's Repo line) and `homeSpec.programs.vscodium.languages.nix.flake`
   (nixd's option source). `hostSpec.services.nix` trusts only `root`; add
   users with `nix.settings.trusted-users`. Personal shell aliases go in the
   consumer's `programs.bash.shellAliases`.
+- **VSCodium.** `homeModules.vscodium` (`homeSpec.programs.vscodium`) is
+  VSCodium only. Everything past `enable` is per user:
+  `languages.{nix,go,python,rust,gleam,zig,web,yaml,shell,markdown}.enable`,
+  `kubernetes.enable`, `containers.enable` (`client` docker or podman),
+  `claude.enable` (on by default), `direnv.enable` (on when any language
+  is), `githubActions.enable`, `remoteSsh.enable`, `envSpec.enable`,
+  `todoTree.enable`, `tweaks.enable` (layout, workflow and format-on-save
+  preferences), `theme.{color,icons,extensions}` and
+  `theme.font.{family,package,size,lineHeight,letterSpacing,ligatures}`
+  (null keeps VSCodium's defaults). `extraExtensions` and `extraSettings`
+  add more. Language servers the extensions would download (gopls, zls,
+  lemminx, nixd, kubectl, helm) come from Nix; toolchains (go, cargo,
+  zig, gleam, python) come from the project's shell. Extensions come from
+  `pkgs.open-vsx-release` (Claude from `pkgs.vscode-marketplace-release`):
+  the consumer applies org-pkgs' `overlays.vscode-extensions` (in
+  `overlays.default`, nix-community/nix-vscode-extensions).
 - **Storage Boxes.** Mounts are per user. In a home-manager profile set
   `homeSpec.programs.storagebox.enabled = true` and one
   `boxes.<name> = {inherit (values.storageboxes.<box>.subAccounts.<user>) user host port;}`

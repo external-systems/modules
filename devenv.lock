@@ -77,6 +77,27 @@
         "url": "https://flakehub.com/f/andrewthomaslee/moscripts/%2A"
       }
     },
+    "nix-vscode-extensions": {
+      "inputs": {
+        "nixpkgs": [
+          "org-pkgs",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793944645,
+        "narHash": "sha256-qMYr2KAM48CXw8tFtnctYOMdqrxJuVio6qF6C1Aa36E=",
+        "owner": "nix-community",
+        "repo": "nix-vscode-extensions",
+        "rev": "dfc54bda15d150e5d38c18d9ac31e640284774e4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "nix-vscode-extensions",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1793110635,
@@ -98,23 +119,24 @@
         "flake-parts": "flake-parts",
         "import-tree": "import-tree",
         "moscripts": "moscripts",
+        "nix-vscode-extensions": "nix-vscode-extensions",
         "nixpkgs": "nixpkgs",
         "reveal-js": "reveal-js",
         "treefmt-nix": "treefmt-nix",
         "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1793754834,
-        "narHash": "sha256-q4BP36GkmHK6S+BNicICNcSZS68k2vA2AbBhrx4kwx4=",
+        "lastModified": 1793987654,
+        "narHash": "sha256-GPsxUGQ6QZO32BTuXzBLkSKJtCv7gSy/d6wqLv2KgNE=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "af32ce7f303a93e7ca340f738f93fc39cc00c9ac",
+        "rev": "2bfb5fd910b76d063775aedbb3d630298dc30fb0",
         "type": "github"
       },
       "original": {
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "af32ce7f303a93e7ca340f738f93fc39cc00c9ac",
+        "rev": "2bfb5fd910b76d063775aedbb3d630298dc30fb0",
         "type": "github"
       }
     },
