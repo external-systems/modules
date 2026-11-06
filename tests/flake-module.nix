@@ -51,6 +51,19 @@
         assert expect (hm.programs.ssh.settings.storagebox-main.data.Port == 23) "ssh alias missing";
           pkgs.writeText "storagebox-per-user" "ok";
 
+      # VSCodium gets GH_TOKEN from alice's PAT: the wrapper reads the
+      # deployed clan-var path at launch (never the token itself).
+      vscodium-gh-token = let
+        hm = machine.config.home-manager.users.alice;
+        inherit (hm.homeSpec.programs.git.githubAuth) patFile;
+        inherit (hm.programs.vscodium) package;
+        expect = cond: msg: lib.assertMsg cond "vscodium-gh-token: ${msg}";
+      in
+        assert expect (patFile != null) "no patFile fed back";
+        assert expect (lib.hasInfix patFile (package.buildCommand or "")) "codium not wrapped with the PAT file";
+        assert expect (lib.getExe package == "${package}/bin/codium") "wrapper lost bin/codium";
+          pkgs.writeText "vscodium-gh-token" "ok";
+
       # Hardware modules configure themselves from the nixos-facter report:
       # a Pascal card (GTX 1070 Ti) gets the closed module and legacy_580, a
       # Turing card the open module, an Intel iGPU and Bluetooth come on,

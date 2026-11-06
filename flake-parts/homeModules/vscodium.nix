@@ -60,6 +60,15 @@
         "git.enableSmartCommit" = true;
         "git.confirmSync" = false;
         "git.replaceTagsWhenPull" = true;
+        # Sync rebases and stashes like `git pull` (pull.rebase in
+        # homeModules.git), and prunes even without fetch.prune.
+        "git.rebaseWhenSync" = true;
+        "git.autoStash" = true;
+        "git.pruneOnFetch" = true;
+        # main only changes through pull requests: committing on it moves
+        # the commit to a new branch.
+        "git.branchProtection" = ["main"];
+        "git.branchProtectionPrompt" = "alwaysCommitToNewBranch";
         # What treefmt enforces, done on save, so `nix fmt` finds nothing.
         "editor.formatOnSave" = true;
         "files.trimTrailingWhitespace" = true;
@@ -237,6 +246,28 @@
 
     inherit (cfg.theme) font;
 
+    # The user's GitHub PAT (homeModules.git githubAuth, a clan var), when
+    # deployed. VSCodium started from the app menu never runs bash, so the
+    # GH_TOKEN bash exports is missing there and in everything it starts
+    # (tasks, terminals' children, Claude Code running gh). The wrapper
+    # reads the file at launch: the token never enters the Nix store.
+    patFile = ((config.homeSpec.programs.git or {}).githubAuth or {}).patFile or null;
+    codium =
+      if cfg.githubToken.enable && patFile != null
+      then
+        pkgs.symlinkJoin {
+          inherit (pkgs.vscodium) pname version meta passthru;
+          paths = [pkgs.vscodium];
+          nativeBuildInputs = [pkgs.makeWrapper];
+          # The desktop entries run `codium` from PATH, so they get the
+          # wrapper too.
+          postBuild = ''
+            wrapProgram $out/bin/codium \
+              --run 'if [ -z "''${GH_TOKEN-}" ] && [ -r "${patFile}" ]; then export GH_TOKEN="$(cat "${patFile}")"; fi'
+          '';
+        }
+      else pkgs.vscodium;
+
     extensions = lib.unique (
       # Not on Open VSX. Its bundled claude binary is patched for NixOS
       # (autoPatchelf), like nixpkgs' claude-code.
@@ -354,7 +385,7 @@
         };
       };
 
-      tweaks.enable = lib.mkEnableOption "the layout and workflow tweaks: side bar on the right, no minimap, no start page, no delete/drag confirmations, git autofetch and smart commit, bash terminal, format on save, trailing whitespace trimmed and one final newline";
+      tweaks.enable = lib.mkEnableOption "the layout and workflow tweaks: side bar on the right, no minimap, no start page, no delete/drag confirmations, git autofetch, prune, rebase on sync, smart commit and main protected (commits go to a new branch), bash terminal, format on save, trailing whitespace trimmed and one final newline";
 
       direnv.enable = lib.mkOption {
         type = lib.types.bool;
@@ -363,6 +394,10 @@
         description = "direnv (mkhl.direnv): load the repo's .envrc (its devenv shell) into the editor, so language servers and the terminal use the project's toolchains. On when any language is.";
       };
       githubActions.enable = lib.mkEnableOption "GitHub Actions (github.vscode-github-actions): workflow validation against the actions' inputs, run status";
+
+      githubToken.enable =
+        lib.mkEnableOption "GH_TOKEN in VSCodium from the user's GitHub PAT (homeSpec.programs.git.githubAuth), so gh works in tasks, terminals and Claude Code however VSCodium was started; a no-op without the PAT"
+        // {default = true;};
 
       claude.enable =
         lib.mkEnableOption "Claude Code for VSCodium (anthropic.claude-code, unfree)"
@@ -454,6 +489,7 @@
       programs = {
         vscodium = {
           enable = true;
+          package = codium;
           mutableExtensionsDir = cfg.mutableExtensions;
           profiles.default = {
             inherit extensions;

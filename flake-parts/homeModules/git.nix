@@ -101,18 +101,36 @@
             pull = {
               rebase = true;
               autostash = true;
-              twohead = "ort";
             };
+
+            # Remote-tracking branches deleted on the remote go away on
+            # every fetch (also VSCodium's autofetch).
+            fetch.prune = true;
 
             push = {
               default = "simple";
               autoSetupRemote = true;
+              followTags = true;
             };
 
             branch = {
               autoSetupRebase = "always";
               autoSetupMerge = "always";
+              sort = "-committerdate";
             };
+
+            tag.sort = "version:refname";
+            column.ui = "auto";
+
+            # Clearer diffs and conflicts: histogram matches moved and
+            # repeated lines better, zdiff3 shows the common ancestor.
+            diff = {
+              algorithm = "histogram";
+              colorMoved = "default";
+            };
+            merge.conflictStyle = "zdiff3";
+            # Reuse recorded conflict resolutions across rebases.
+            rerere.enabled = true;
 
             rebase = {
               stat = true;
