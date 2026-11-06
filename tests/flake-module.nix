@@ -64,6 +64,67 @@
         assert expect (lib.getExe package == "${package}/bin/codium") "wrapper lost bin/codium";
           pkgs.writeText "vscodium-gh-token" "ok";
 
+      # Gaming Mode as the dedicated user, shared Steam libraries, and the
+      # gaming boot entry: the user and libraries exist in both entries,
+      # jovian and the configuration hook only in the gaming one.
+      gaming = let
+        cfg = machine.config;
+        gamer = cfg.users.users.gamer;
+        entry = inputs.nixpkgs.lib.nixosSystem {
+          modules = [
+            self.nixosModules.default
+            ./clan-stub.nix
+            {
+              nixpkgs.hostPlatform = system;
+              fileSystems = {
+                "/" = {
+                  device = "/dev/disk/by-label/nixos";
+                  fsType = "ext4";
+                };
+                "/mnt/steam" = {
+                  device = "/dev/disk/by-label/root";
+                  fsType = "btrfs";
+                };
+              };
+              boot.loader.grub.devices = ["nodev"];
+              system.stateVersion = "26.11";
+              swapDevices = [{device = "/dev/disk/by-label/swap";}];
+              users.users.alice.isNormalUser = true;
+              hostSpec.system = {
+                gamingSpecialisation = {
+                  enable = true;
+                  diskSwap = true;
+                  configuration.environment.etc.gaming-hook.text = "on";
+                };
+                jovian.gamingMode = true;
+                gaming.sharedLibraries = {
+                  enable = true;
+                  paths = ["/mnt/steam"];
+                };
+              };
+            }
+          ];
+        };
+        parent = entry.config;
+        # NixOS types specialisation.<name>.configuration as the child's
+        # own evaluated config, so this is the gaming entry itself.
+        gaming = parent.specialisation.gaming.configuration;
+        expect = c: msg: lib.assertMsg c "gaming: ${msg}";
+      in
+        assert expect (gamer.isNormalUser && gamer.uid == 1500 && gamer.hashedPassword == "!") "gamer not a locked normal user with uid 1500";
+        assert expect (!(lib.elem "wheel" gamer.extraGroups) && gamer.openssh.authorizedKeys.keys == []) "gamer has wheel or SSH keys";
+        assert expect (cfg.services.displayManager.sddm.settings.Users.HideUsers == "gamer") "gamer not hidden from SDDM";
+        assert expect (cfg.jovian.steam.user == "gamer") "Gaming Mode does not log in as gamer";
+        assert expect (lib.sort lib.lessThan cfg.users.groups.gamers.members == ["alice" "gamer"]) "gamers group is not alice and gamer";
+        assert expect (cfg.systemd.services.steam-library-mnt-games2.unitConfig.RequiresMountsFor == "/mnt/games2") "library service not tied to its mount";
+        assert expect (lib.hasInfix "/srv/games/users/alice/steamapps/common" cfg.systemd.services.steam-library-srv-games.script) "alice has no common link";
+        assert expect (!parent.hostSpec.system.jovian.enable && gaming.hostSpec.system.jovian.enable) "jovian not only in the gaming entry";
+        assert expect (parent.users.users ? gamer && gaming.users.users ? gamer) "gamer missing from an entry";
+        assert expect (!(parent.environment.etc ? gaming-hook) && gaming.environment.etc.gaming-hook.text == "on") "configuration hook not only in the gaming entry";
+        assert expect (parent.swapDevices == [] && gaming.swapDevices != []) "diskSwap not only in the gaming entry";
+        assert expect (gaming.jovian.steam.user == "gamer" && gaming.jovian.steam.autoStart) "gaming entry does not autostart Gaming Mode as gamer";
+          pkgs.writeText "gaming" "ok";
+
       # Hardware modules configure themselves from the nixos-facter report:
       # a Pascal card (GTX 1070 Ti) gets the closed module and legacy_580, a
       # Turing card the open module, an Intel iGPU and Bluetooth come on,
