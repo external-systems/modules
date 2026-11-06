@@ -92,6 +92,7 @@
         assert expect pascal.hostSpec.hardware.gpu.intel.enable "Intel GPU not detected";
         assert expect (!pascal.hostSpec.hardware.gpu.amd.enable) "AMD on without an AMD card";
         assert expect (!pascal.hardware.nvidia.open && pascal.hardware.nvidia.branch == "legacy_580") "Pascal not on the closed module and legacy_580";
+        assert expect pascal.hardware.nvidia.powerManagement.enable "NVIDIA power management off";
         assert expect (turing.hardware.nvidia.open && turing.hardware.nvidia.branch == "stable") "Turing not on the open module and stable";
         assert expect (!optedOut.hostSpec.hardware.gpu.intel.enable) "a machine cannot switch a detected GPU off";
           pkgs.writeText "hardware-from-facter" "ok";

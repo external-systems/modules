@@ -7,6 +7,8 @@
     ...
   }: let
     cfg = config.hostSpec.system.jovian;
+    # Gaming Mode is on exactly when it has a user to log in as.
+    gamingMode = cfg.user != null;
 
     pureGamescope =
       (import pkgs.path {
@@ -16,16 +18,16 @@
   in {
     options.hostSpec.system.jovian = {
       enable = lib.mkEnableOption "default jovian configuration";
-      gamingMode = lib.mkEnableOption ''
-        Steam Gaming Mode (Jovian's gamescope session, jovian.steam). The
-        machine boots straight into it as `user`; Switch to Desktop opens
-        `desktopSession`
-      '';
       user = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
         example = "alice";
-        description = "User that Gaming Mode logs in as. Required when gamingMode is on.";
+        description = ''
+          Steam Gaming Mode (Jovian's gamescope session, jovian.steam): the
+          machine boots straight into it, logged in as this user, and Switch
+          to Desktop opens `desktopSession`. null boots to the normal login
+          screen (SDDM) instead. The user must exist on the machine.
+        '';
       };
       desktopSession = lib.mkOption {
         type = lib.types.str;
@@ -86,8 +88,8 @@
     config = lib.mkIf cfg.enable {
       assertions = [
         {
-          assertion = cfg.gamingMode -> cfg.user != null;
-          message = "hostSpec.system.jovian.gamingMode needs hostSpec.system.jovian.user: the user Gaming Mode logs in as.";
+          assertion = gamingMode -> (config.users.users.${cfg.user}.isNormalUser or false);
+          message = "hostSpec.system.jovian.user: Gaming Mode logs in as \"${toString cfg.user}\", which is not a normal user on this machine.";
         }
       ];
 
@@ -133,12 +135,11 @@
         # Plugin loader for Gaming Mode's Quick Access Menu. Deck only: its
         # useful plugins (TDP, fan, battery) target handheld hardware, and it
         # opens Steam's CEF debugger, so PCs stay without it.
-        decky-loader.enable = cfg.steamdeck && cfg.gamingMode;
+        decky-loader.enable = cfg.steamdeck && gamingMode;
         devices.steamdeck.enable = cfg.steamdeck;
         # autoStart reuses SDDM (autologin, gamescope-wayland as default
-        # session), so it composes with the kde module. Without a user the
-        # assertion above reports it instead of a type error.
-        steam = lib.mkIf (cfg.gamingMode && cfg.user != null) {
+        # session), so it composes with the kde module.
+        steam = lib.mkIf gamingMode {
           enable = true;
           autoStart = true;
           inherit (cfg) user desktopSession;
