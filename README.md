@@ -84,11 +84,13 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   consumer's `programs.bash.shellAliases`.
 - **VSCodium.** `homeModules.vscodium` (`homeSpec.programs.vscodium`) is
   VSCodium only. Everything past `enable` is per user:
-  `languages.{nix,go,python,rust,gleam,zig,web,yaml}.enable`,
+  `languages.{nix,go,python,rust,gleam,zig,web,yaml,shell,markdown}.enable`,
   `kubernetes.enable`, `containers.enable` (`client` docker or podman),
-  `claude.enable` (the only one on by default), `remoteSsh.enable`,
-  `envSpec.enable`, `todoTree.enable`, `tweaks.enable` (layout and
-  workflow preferences) and `theme.{color,icons,extensions}`
+  `claude.enable` (on by default), `direnv.enable` (on when any language
+  is), `githubActions.enable`, `remoteSsh.enable`, `envSpec.enable`,
+  `todoTree.enable`, `tweaks.enable` (layout, workflow and format-on-save
+  preferences), `theme.{color,icons,extensions}` and
+  `theme.font.{family,package,size,lineHeight,letterSpacing,ligatures}`
   (null keeps VSCodium's defaults). `extraExtensions` and `extraSettings`
   add more. Language servers the extensions would download (gopls, zls,
   lemminx, nixd, kubectl, helm) come from Nix; toolchains (go, cargo,

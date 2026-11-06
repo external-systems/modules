@@ -149,18 +149,29 @@
               color = "Red";
               icons = "catppuccin-macchiato";
               extensions = [pkgs.open-vsx-release.catppuccin.catppuccin-vsc-icons];
+              font = {
+                family = "'Atkinson Hyperlegible Mono', monospace";
+                package = pkgs.atkinson-hyperlegible-mono;
+                size = 15;
+                lineHeight = 1.6;
+                letterSpacing = 0.5;
+                ligatures = true;
+              };
             };
             tweaks.enable = true;
             claude.enable = true;
             remoteSsh.enable = true;
             envSpec.enable = true;
             todoTree.enable = true;
+            githubActions.enable = true;
             languages = {
               nix = {
                 enable = true;
                 flake = "/home/alice/home";
               };
               go.enable = true;
+              shell.enable = true;
+              markdown.enable = true;
               python.enable = true;
               rust.enable = true;
               gleam.enable = true;

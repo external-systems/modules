@@ -25,6 +25,25 @@
       (lib.mkIf (cfg.theme.color != null) {"workbench.colorTheme" = cfg.theme.color;})
       (lib.mkIf (cfg.theme.icons != null) {"workbench.iconTheme" = cfg.theme.icons;})
 
+      # Same font in the editor and the terminal.
+      (lib.mkIf (font.family != null) {
+        "editor.fontFamily" = font.family;
+        "terminal.integrated.fontFamily" = font.family;
+      })
+      (lib.mkIf (font.size != null) {
+        "editor.fontSize" = font.size;
+        "terminal.integrated.fontSize" = font.size;
+      })
+      (lib.mkIf (font.lineHeight != null) {
+        "editor.lineHeight" = font.lineHeight;
+        "terminal.integrated.lineHeight" = font.lineHeight;
+      })
+      (lib.mkIf (font.letterSpacing != null) {
+        "editor.letterSpacing" = font.letterSpacing;
+        "terminal.integrated.letterSpacing" = font.letterSpacing;
+      })
+      (lib.mkIf font.ligatures {"editor.fontLigatures" = true;})
+
       (lib.mkIf cfg.tweaks.enable {
         "security.workspace.trust.untrustedFiles" = "open";
         "terminal.integrated.defaultProfile.linux" = "bash";
@@ -41,6 +60,36 @@
         "git.enableSmartCommit" = true;
         "git.confirmSync" = false;
         "git.replaceTagsWhenPull" = true;
+        # What treefmt enforces, done on save, so `nix fmt` finds nothing.
+        "editor.formatOnSave" = true;
+        "files.trimTrailingWhitespace" = true;
+        "files.insertFinalNewline" = true;
+        "files.trimFinalNewlines" = true;
+      })
+
+      # direnv loads the repo's .envrc (the devenv shell) into the editor,
+      # so language servers, tasks and the terminal get the project's
+      # toolchains (go, cargo, zig, gleam, python); extensions restart
+      # when it changes.
+      (lib.mkIf cfg.direnv.enable {
+        "direnv.path.executable" = lib.getExe pkgs.direnv;
+        "direnv.restart.automatic" = true;
+      })
+
+      # shellcheck and shfmt from Nix: the Open VSX builds would use
+      # bundled or downloaded binaries. shfmt reads .editorconfig.
+      (lib.mkIf languages.shell.enable {
+        "shellcheck.executablePath" = lib.getExe pkgs.shellcheck;
+        "shellformat.path" = lib.getExe pkgs.shfmt;
+        "shellformat.useEditorConfig" = true;
+        "[shellscript]"."editor.defaultFormatter" = "foxundermoon.shell-format";
+      })
+
+      # markdownlint reads a repo's .markdownlint* config; line length is
+      # off by default because docs here wrap by sentence or not at all.
+      (lib.mkIf languages.markdown.enable {
+        "markdownlint.config".MD013 = false;
+        "[markdown]"."editor.defaultFormatter" = "DavidAnson.vscode-markdownlint";
       })
 
       (lib.mkIf languages.nix.enable {
@@ -186,6 +235,8 @@
     # Kubernetes extension and used for compose files.
     yamlEnabled = languages.yaml.enable || cfg.kubernetes.enable || cfg.containers.enable;
 
+    inherit (cfg.theme) font;
+
     extensions = lib.unique (
       # Not on Open VSX. Its bundled claude binary is patched for NixOS
       # (autoPatchelf), like nixpkgs' claude-code.
@@ -193,6 +244,13 @@
       ++ lib.optionals cfg.remoteSsh.enable [ext.jeanp413.open-remote-ssh]
       ++ lib.optionals cfg.envSpec.enable [ext.varlock.env-spec-language]
       ++ lib.optionals cfg.todoTree.enable [ext.gruntfuggly.todo-tree]
+      ++ lib.optionals cfg.direnv.enable [ext.mkhl.direnv]
+      ++ lib.optionals cfg.githubActions.enable [ext.github.vscode-github-actions]
+      ++ lib.optionals languages.shell.enable [
+        ext.timonwong.shellcheck
+        ext.foxundermoon.shell-format
+      ]
+      ++ lib.optionals languages.markdown.enable [ext.davidanson.vscode-markdownlint]
       ++ lib.optionals languages.nix.enable [
         ext.jnoortheen.nix-ide
         ext.kamadorueda.alejandra
@@ -261,9 +319,50 @@
           example = lib.literalExpression "[pkgs.open-vsx-release.catppuccin.catppuccin-vsc-icons]";
           description = "Extensions that provide theme.color or theme.icons.";
         };
+        font = {
+          family = lib.mkOption {
+            type = with lib.types; nullOr str;
+            default = null;
+            example = "'Atkinson Hyperlegible Mono', monospace";
+            description = "Editor and terminal font family (CSS font-family list). null keeps VSCodium's default. The font must be installed: put its package in theme.font.package.";
+          };
+          package = lib.mkOption {
+            type = with lib.types; nullOr package;
+            default = null;
+            example = lib.literalExpression "pkgs.atkinson-hyperlegible-mono";
+            description = "Font package installed for this user (with fontconfig) so theme.font.family resolves.";
+          };
+          size = lib.mkOption {
+            type = with lib.types; nullOr (either ints.positive float);
+            default = null;
+            example = 15;
+            description = "Editor and terminal font size in pixels. null keeps the default (14).";
+          };
+          lineHeight = lib.mkOption {
+            type = with lib.types; nullOr (either ints.unsigned float);
+            default = null;
+            example = 1.6;
+            description = "Editor and terminal line height: below 8 a multiple of the font size, otherwise pixels. More space between lines helps dyslexic readers.";
+          };
+          letterSpacing = lib.mkOption {
+            type = with lib.types; nullOr (either int float);
+            default = null;
+            example = 0.5;
+            description = "Editor and terminal letter spacing in pixels.";
+          };
+          ligatures = lib.mkEnableOption "font ligatures in the editor (when the font has them)";
+        };
       };
 
-      tweaks.enable = lib.mkEnableOption "the layout and workflow tweaks: side bar on the right, no minimap, no start page, no delete/drag confirmations, git autofetch and smart commit, bash terminal";
+      tweaks.enable = lib.mkEnableOption "the layout and workflow tweaks: side bar on the right, no minimap, no start page, no delete/drag confirmations, git autofetch and smart commit, bash terminal, format on save, trailing whitespace trimmed and one final newline";
+
+      direnv.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = lib.any (language: language.enable or false) (lib.attrValues languages);
+        defaultText = lib.literalExpression "any languages.<name>.enable";
+        description = "direnv (mkhl.direnv): load the repo's .envrc (its devenv shell) into the editor, so language servers and the terminal use the project's toolchains. On when any language is.";
+      };
+      githubActions.enable = lib.mkEnableOption "GitHub Actions (github.vscode-github-actions): workflow validation against the actions' inputs, run status";
 
       claude.enable =
         lib.mkEnableOption "Claude Code for VSCodium (anthropic.claude-code, unfree)"
@@ -283,6 +382,8 @@
           };
         };
         go.enable = language "Go: the Go extension with gopls from Nix";
+        shell.enable = language "shell scripts: ShellCheck and shfmt (both from Nix), format on save";
+        markdown.enable = language "Markdown: markdownlint";
         python.enable = language "Python: Python, debugpy, basedpyright and ruff (format and import sorting on save)";
         rust.enable = language "Rust: rust-analyzer (clippy on save), Even Better TOML, CodeLLDB";
         gleam.enable = language "Gleam: the Gleam extension, using gleam from PATH";
@@ -342,10 +443,13 @@
     };
 
     config = lib.mkIf (cfg.enable && config.home.username != "root") {
-      home.packages = lib.optionals languages.nix.enable [
-        pkgs.alejandra
-        pkgs.nixd
-      ];
+      home.packages =
+        lib.optionals languages.nix.enable [
+          pkgs.alejandra
+          pkgs.nixd
+        ]
+        ++ lib.optional (font.package != null) font.package;
+      fonts.fontconfig.enable = lib.mkIf (font.package != null) true;
 
       programs = {
         vscodium = {
