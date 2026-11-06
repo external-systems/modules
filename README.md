@@ -98,6 +98,9 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `pkgs.open-vsx-release` (Claude from `pkgs.vscode-marketplace-release`):
   the consumer applies org-pkgs' `overlays.vscode-extensions` (in
   `overlays.default`, nix-community/nix-vscode-extensions).
+  `githubToken.enable` (on by default) wraps `codium` to export
+  `GH_TOKEN` from the user's GitHub PAT file (`git.githubAuth`) at
+  launch, so `gh` works in VSCodium however it was started.
 - **Storage Boxes.** Mounts are per user. In a home-manager profile set
   `homeSpec.programs.storagebox.enabled = true` and one
   `boxes.<name> = {inherit (values.storageboxes.<box>.subAccounts.<user>) user host port;}`
