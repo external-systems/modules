@@ -83,17 +83,19 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   users with `nix.settings.trusted-users`. Personal shell aliases go in the
   consumer's `programs.bash.shellAliases`.
 - **VSCodium.** `homeModules.vscodium` (`homeSpec.programs.vscodium`) is
-  VSCodium only. Everything past `enable` is per user and off by default:
+  VSCodium only. Everything past `enable` is per user:
   `languages.{nix,go,python,rust,gleam,zig,web,yaml}.enable`,
   `kubernetes.enable`, `containers.enable` (`client` docker or podman),
-  `remoteSsh.enable`, `envSpec.enable`, `todoTree.enable`, `tweaks.enable`
-  (layout and workflow preferences) and `theme.{color,icons,extensions}`
+  `claude.enable` (the only one on by default), `remoteSsh.enable`,
+  `envSpec.enable`, `todoTree.enable`, `tweaks.enable` (layout and
+  workflow preferences) and `theme.{color,icons,extensions}`
   (null keeps VSCodium's defaults). `extraExtensions` and `extraSettings`
   add more. Language servers the extensions would download (gopls, zls,
   lemminx, nixd, kubectl, helm) come from Nix; toolchains (go, cargo,
-  zig, gleam, python) come from the project's shell. `remoteSsh` and
-  `envSpec` need org-pkgs' `overlays.vscode-extensions` (in
-  `overlays.default`) applied by the consumer.
+  zig, gleam, python) come from the project's shell. Extensions come from
+  `pkgs.open-vsx-release` (Claude from `pkgs.vscode-marketplace-release`):
+  the consumer applies org-pkgs' `overlays.vscode-extensions` (in
+  `overlays.default`, nix-community/nix-vscode-extensions).
 - **Storage Boxes.** Mounts are per user. In a home-manager profile set
   `homeSpec.programs.storagebox.enabled = true` and one
   `boxes.<name> = {inherit (values.storageboxes.<box>.subAccounts.<user>) user host port;}`

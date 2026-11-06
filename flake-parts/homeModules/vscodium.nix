@@ -1,10 +1,12 @@
 {lib, ...}: {
   # ------ Home-manager Modules ------ #
-  # VSCodium only (programs.vscodium): extensions come from nixpkgs plus the
-  # Open VSX extensions in org-pkgs' overlays.vscode-extensions, and every
-  # extension here is also on Open VSX, so VSCodium's own gallery agrees.
-  # Each language, the Kubernetes and container tooling, the theme and the
-  # layout tweaks are separate per-user toggles.
+  # VSCodium only (programs.vscodium). Extensions come from
+  # nix-community/nix-vscode-extensions through org-pkgs'
+  # overlays.vscode-extensions (part of overlays.default, applied by the
+  # consumer): Open VSX releases, VSCodium's own gallery, so updating that
+  # input in pkgs updates them all. Claude Code is Marketplace-only. Each
+  # language, the Kubernetes and container tooling, Claude, the theme and
+  # the layout tweaks are separate per-user toggles.
   flake.homeModules.vscodium = {
     pkgs,
     config,
@@ -12,7 +14,7 @@
   }: let
     cfg = config.homeSpec.programs.vscodium;
     inherit (cfg) languages;
-    ext = pkgs.vscode-extensions;
+    ext = pkgs.open-vsx-release;
 
     # Settings are VS Code setting IDs, written dotted ("nix.serverPath"):
     # nested attrsets would become nested JSON objects, which VS Code reads
@@ -185,7 +187,10 @@
     yamlEnabled = languages.yaml.enable || cfg.kubernetes.enable || cfg.containers.enable;
 
     extensions = lib.unique (
-      lib.optionals cfg.remoteSsh.enable [ext.jeanp413.open-remote-ssh]
+      # Not on Open VSX. Its bundled claude binary is patched for NixOS
+      # (autoPatchelf), like nixpkgs' claude-code.
+      lib.optionals cfg.claude.enable [pkgs.vscode-marketplace-release.anthropic.claude-code]
+      ++ lib.optionals cfg.remoteSsh.enable [ext.jeanp413.open-remote-ssh]
       ++ lib.optionals cfg.envSpec.enable [ext.varlock.env-spec-language]
       ++ lib.optionals cfg.todoTree.enable [ext.gruntfuggly.todo-tree]
       ++ lib.optionals languages.nix.enable [
@@ -208,7 +213,7 @@
       ++ lib.optionals languages.zig.enable [ext.ziglang.vscode-zig]
       ++ lib.optionals languages.web.enable (
         [ext.ecmel.vscode-html-css]
-        # nixpkgs packages vscode-xml for x86_64-linux (and darwin) only.
+        # vscode-xml is built for x86_64-linux (and darwin) only.
         ++ lib.optional (lib.meta.availableOn pkgs.stdenv.hostPlatform ext.redhat.vscode-xml) ext.redhat.vscode-xml
         ++ lib.optional languages.web.tailwind.enable ext.bradlc.vscode-tailwindcss
       )
@@ -253,13 +258,16 @@
         extensions = lib.mkOption {
           type = with lib.types; listOf package;
           default = [];
-          example = lib.literalExpression "[pkgs.vscode-extensions.catppuccin.catppuccin-vsc-icons]";
+          example = lib.literalExpression "[pkgs.open-vsx-release.catppuccin.catppuccin-vsc-icons]";
           description = "Extensions that provide theme.color or theme.icons.";
         };
       };
 
       tweaks.enable = lib.mkEnableOption "the layout and workflow tweaks: side bar on the right, no minimap, no start page, no delete/drag confirmations, git autofetch and smart commit, bash terminal";
 
+      claude.enable =
+        lib.mkEnableOption "Claude Code for VSCodium (anthropic.claude-code, unfree)"
+        // {default = true;};
       remoteSsh.enable = lib.mkEnableOption "Open Remote - SSH (jeanp413.open-remote-ssh), VSCodium's remote development over SSH";
       envSpec.enable = lib.mkEnableOption "@env-spec support for .env.schema and .env files (varlock.env-spec-language)";
       todoTree.enable = lib.mkEnableOption "Todo Tree (TODO/FIXME comments in a tree view)";
@@ -321,7 +329,7 @@
       extraExtensions = lib.mkOption {
         type = with lib.types; listOf package;
         default = [];
-        example = lib.literalExpression "[pkgs.vscode-extensions.usernamehw.errorlens]";
+        example = lib.literalExpression "[pkgs.open-vsx-release.usernamehw.errorlens]";
         description = "More extensions for this user.";
       };
 

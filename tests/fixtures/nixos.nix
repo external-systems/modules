@@ -13,7 +13,11 @@
     ../clan-stub.nix
   ];
 
-  nixpkgs.overlays = [(import ./overlay.nix)];
+  nixpkgs.overlays = [
+    (import ./overlay.nix)
+    # The VS Code extension sets homeModules.vscodium reads.
+    inputs.org-pkgs.overlays.vscode-extensions
+  ];
 
   # Minimal bootable shape.
   fileSystems."/" = {
@@ -144,9 +148,10 @@
             theme = {
               color = "Red";
               icons = "catppuccin-macchiato";
-              extensions = [pkgs.vscode-extensions.catppuccin.catppuccin-vsc-icons];
+              extensions = [pkgs.open-vsx-release.catppuccin.catppuccin-vsc-icons];
             };
             tweaks.enable = true;
+            claude.enable = true;
             remoteSsh.enable = true;
             envSpec.enable = true;
             todoTree.enable = true;
@@ -171,7 +176,7 @@
               enable = true;
               client = "podman";
             };
-            extraExtensions = [pkgs.vscode-extensions.usernamehw.errorlens];
+            extraExtensions = [pkgs.open-vsx-release.usernamehw.errorlens];
             extraSettings."workbench.sideBar.location" = "left";
           };
           whisper-dictation.enable = true;
