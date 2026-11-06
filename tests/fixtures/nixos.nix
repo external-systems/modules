@@ -63,12 +63,20 @@
       rancher.enable = true;
       wayland.enable = true;
     };
-    system.jovian = {
-      enable = true;
-      user = "alice";
-      outputs = ["DP-1"];
-      steamdeck = true;
-      powerProfile.profile = "performance";
+    system = {
+      # Gaming Mode logs in as the dedicated user (gaming.user), which
+      # is declared because of it; alice and gamer share the libraries.
+      gaming.sharedLibraries = {
+        enable = true;
+        paths = ["/srv/games" "/mnt/games2"];
+      };
+      jovian = {
+        enable = true;
+        gamingMode = true;
+        outputs = ["DP-1"];
+        steamdeck = true;
+        powerProfile.profile = "performance";
+      };
     };
   };
 

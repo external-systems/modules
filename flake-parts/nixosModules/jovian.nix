@@ -7,8 +7,7 @@
     ...
   }: let
     cfg = config.hostSpec.system.jovian;
-    # Gaming Mode is on exactly when it has a user to log in as.
-    gamingMode = cfg.user != null;
+    inherit (cfg) gamingMode;
 
     pureGamescope =
       (import pkgs.path {
@@ -18,15 +17,24 @@
   in {
     options.hostSpec.system.jovian = {
       enable = lib.mkEnableOption "default jovian configuration";
+      gamingMode = lib.mkEnableOption ''
+        Steam Gaming Mode (Jovian's gamescope session, jovian.steam): the
+        machine boots straight into it, logged in as `user`, and Switch
+        to Desktop opens `desktopSession` as that same user. Off boots to
+        the normal login screen (SDDM)
+      '';
       user = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
+        type = lib.types.str;
+        # `or`: nixosModules.jovian also works without nixosModules.gaming.
+        default = config.hostSpec.system.gaming.user.name or "gamer";
+        defaultText = lib.literalExpression "config.hostSpec.system.gaming.user.name";
         example = "alice";
         description = ''
-          Steam Gaming Mode (Jovian's gamescope session, jovian.steam): the
-          machine boots straight into it, logged in as this user, and Switch
-          to Desktop opens `desktopSession`. null boots to the normal login
-          screen (SDDM) instead. The user must exist on the machine.
+          User Gaming Mode logs in as. Defaults to the dedicated,
+          unprivileged Gaming Mode user (hostSpec.system.gaming.user),
+          which is then declared automatically. Set a real user only if
+          that person's own desktop should sit behind Switch to Desktop.
+          The user must exist on the machine.
         '';
       };
       outputs = lib.mkOption {
@@ -101,7 +109,7 @@
       assertions = [
         {
           assertion = gamingMode -> (config.users.users.${cfg.user}.isNormalUser or false);
-          message = "hostSpec.system.jovian.user: Gaming Mode logs in as \"${toString cfg.user}\", which is not a normal user on this machine.";
+          message = "hostSpec.system.jovian.user: Gaming Mode logs in as \"${cfg.user}\", which is not a normal user on this machine.";
         }
       ];
 
