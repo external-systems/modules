@@ -103,7 +103,9 @@
           ];
         };
         parent = entry.config;
-        gaming = (entry.extendModules {modules = [parent.specialisation.gaming.configuration];}).config;
+        # NixOS types specialisation.<name>.configuration as the child's
+        # own evaluated config, so this is the gaming entry itself.
+        gaming = parent.specialisation.gaming.configuration;
         expect = c: msg: lib.assertMsg c "gaming: ${msg}";
       in
         assert expect (gamer.isNormalUser && gamer.uid == 1500 && gamer.hashedPassword == "!") "gamer not a locked normal user with uid 1500";

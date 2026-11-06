@@ -171,7 +171,8 @@
             owned
             // {
               mode = "0644";
-              argument = "[Daemon]\\nAutolock=false\\nLockOnResume=false\\n";
+              # Real newlines: the NixOS tmpfiles module escapes them.
+              argument = "[Daemon]\nAutolock=false\nLockOnResume=false\n";
             };
         };
       })
