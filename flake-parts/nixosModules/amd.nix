@@ -7,9 +7,16 @@ _: {
     ...
   }: let
     cfg = config.hostSpec.hardware.gpu.amd;
+    cards = config.hardware.facter.report.hardware.graphics_card or [];
   in {
     options.hostSpec.hardware.gpu.amd = {
-      enable = lib.mkEnableOption "default amd configuration";
+      enable =
+        lib.mkEnableOption "AMD GPU support (amdgpu in initrd, LACT, GPU tools)"
+        // {
+          # 0x1002: an AMD/ATI GPU in the machine's nixos-facter report.
+          default = lib.any (card: (card.vendor.value or null) == 4098) cards;
+          defaultText = lib.literalMD "an AMD graphics card in `hardware.facter.report`";
+        };
       packages = lib.mkOption {
         type = lib.types.listOf lib.types.package;
         default = with pkgs; [

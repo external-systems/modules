@@ -24,10 +24,12 @@
     clan.enable = true;
     hardware = {
       bluetooth.enable = true;
-      cpu.intel.enable = true;
-      gpu.amd.enable = true;
+      gpu = {
+        amd.enable = true;
+        intel.enable = true;
+        nvidia.enable = true;
+      };
       sound.enable = true;
-      virtualization.nested.enable = true;
     };
     networking = {
       optimization = {

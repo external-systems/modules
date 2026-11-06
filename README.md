@@ -60,7 +60,18 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   package option: the upstream one (`programs.ghostty.package`,
   `services.tailscale.package`, ...) or this repo's
   (`hostSpec.services.ollama.package`, `hostSpec.hardware.gpu.amd.packages`,
+  `hostSpec.hardware.gpu.nvidia.packages`,
   `homeSpec.programs.media.packages`, `homeSpec.agents.mcp.github.package`).
+- **GPUs from nixos-facter.** `hostSpec.hardware.gpu.{amd,intel,nvidia}`
+  turn themselves on for the graphics cards in `hardware.facter.report`
+  (clan sets it from `machines/<name>/facter.json`); no tag or setting
+  needed. The NVIDIA module also picks the kernel module and driver
+  branch from the card: open and `stable` for Turing and newer, closed and
+  `legacy_580` for Maxwell to Volta (e.g. GTX 1070 Ti), `legacy_470` for
+  Kepler. Set `.enable`, `.open` or `.branch` to override.
+  `hostSpec.hardware.bluetooth` turns on the same way. Nested KVM needs
+  no module: kvm_amd and kvm_intel nest by default (Linux 4.20 and later),
+  and facter loads the right one.
 - **Users and fleet values.** No module names a user, host or account.
   These have no default and must be set when their module is enabled:
   each `homeSpec.programs.storagebox.boxes.<name>.{user,host}` (from the
