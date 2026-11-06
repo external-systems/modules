@@ -77,7 +77,10 @@
             {
               nixpkgs.hostPlatform = system;
               fileSystems = {
-                "/".device = "/dev/disk/by-label/nixos";
+                "/" = {
+                  device = "/dev/disk/by-label/nixos";
+                  fsType = "ext4";
+                };
                 "/mnt/steam" = {
                   device = "/dev/disk/by-label/root";
                   fsType = "btrfs";
