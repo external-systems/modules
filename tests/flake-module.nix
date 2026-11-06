@@ -70,7 +70,7 @@
       gaming = let
         cfg = machine.config;
         gamer = cfg.users.users.gamer;
-        entry = (inputs.nixpkgs.lib.nixosSystem {
+        entry = inputs.nixpkgs.lib.nixosSystem {
           modules = [
             self.nixosModules.default
             ./clan-stub.nix
@@ -101,7 +101,7 @@
               };
             }
           ];
-        });
+        };
         parent = entry.config;
         gaming = (entry.extendModules {modules = [parent.specialisation.gaming.configuration];}).config;
         expect = c: msg: lib.assertMsg c "gaming: ${msg}";
