@@ -3,8 +3,7 @@ _: {
   # The proprietary NVIDIA driver, set up from the machine's nixos-facter
   # report: on when the report has an NVIDIA card, with the kernel module
   # and driver branch that card's generation needs. What else depends on
-  # the machine stays there: power management, a kernel pin, CUDA
-  # capabilities.
+  # the machine stays there: a kernel pin, CUDA capabilities.
   flake.nixosModules.nvidia = {
     config,
     pkgs,
@@ -73,6 +72,9 @@ _: {
         nvidia = {
           inherit (cfg) open branch;
           modesetting.enable = lib.mkDefault true;
+          # Save and restore video memory across suspend, so the desktop
+          # comes back intact. finegrained (laptop PRIME offload) stays off.
+          powerManagement.enable = lib.mkDefault true;
         };
       };
     };

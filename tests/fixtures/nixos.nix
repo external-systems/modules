@@ -57,7 +57,6 @@
     };
     system.jovian = {
       enable = true;
-      gamingMode = true;
       user = "alice";
       steamdeck = true;
       powerProfile.profile = "performance";
