@@ -3,7 +3,11 @@
 {
   inputs,
   self,
-}: {lib, ...}: {
+}: {
+  lib,
+  pkgs,
+  ...
+}: {
   imports = [
     self.nixosModules.default
     ../clan-stub.nix
@@ -134,9 +138,41 @@
             };
           };
           tmux.enable = true;
-          vscode = {
+          vscodium = {
             enable = true;
-            nixdFlake = "/home/alice/home";
+            mutableExtensions = false;
+            theme = {
+              color = "Red";
+              icons = "catppuccin-macchiato";
+              extensions = [pkgs.vscode-extensions.catppuccin.catppuccin-vsc-icons];
+            };
+            tweaks.enable = true;
+            remoteSsh.enable = true;
+            envSpec.enable = true;
+            todoTree.enable = true;
+            languages = {
+              nix = {
+                enable = true;
+                flake = "/home/alice/home";
+              };
+              go.enable = true;
+              python.enable = true;
+              rust.enable = true;
+              gleam.enable = true;
+              zig.enable = true;
+              web = {
+                enable = true;
+                tailwind.enable = true;
+              };
+              yaml.enable = true;
+            };
+            kubernetes.enable = true;
+            containers = {
+              enable = true;
+              client = "podman";
+            };
+            extraExtensions = [pkgs.vscode-extensions.usernamehw.errorlens];
+            extraSettings."workbench.sideBar.location" = "left";
           };
           whisper-dictation.enable = true;
         };
