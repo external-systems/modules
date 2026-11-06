@@ -67,52 +67,59 @@
       # The three boot entries: default (jovian, Steam on the desktop, no
       # Gaming Mode), gaming (Gaming Mode as the dedicated user) and
       # developer (no jovian, no Steam). The user and libraries exist in
-      # every entry; each hook lands only in its own entry.
+      # every entry; each hook lands only in its own entry. defaultEntry =
+      # "gaming" (a Steam Deck) swaps default and specialisation.
       gaming = let
         cfg = machine.config;
         gamer = cfg.users.users.gamer;
-        entry = inputs.nixpkgs.lib.nixosSystem {
-          modules = [
-            self.nixosModules.default
-            ./clan-stub.nix
-            {
-              nixpkgs.hostPlatform = system;
-              fileSystems = {
-                "/" = {
-                  device = "/dev/disk/by-label/nixos";
-                  fsType = "ext4";
-                };
-                "/mnt/steam" = {
-                  device = "/dev/disk/by-label/root";
-                  fsType = "btrfs";
-                };
-              };
-              boot.loader.grub.devices = ["nodev"];
-              system.stateVersion = "26.11";
-              swapDevices = [{device = "/dev/disk/by-label/swap";}];
-              users.users.alice.isNormalUser = true;
-              hostSpec.system = {
-                gamingSpecialisation = {
-                  enable = true;
-                  configuration.environment.etc.gaming-hook.text = "on";
-                };
-                developerSpecialisation = {
-                  enable = true;
-                  diskSwap = false;
-                  configuration.environment.etc.developer-hook.text = "on";
-                };
-                jovian.gamingMode = true;
-                gaming = {
-                  sharedLibraries = {
-                    enable = true;
-                    paths = ["/mnt/steam"];
+        entryWith = extra:
+          inputs.nixpkgs.lib.nixosSystem {
+            modules = [
+              self.nixosModules.default
+              ./clan-stub.nix
+              {
+                nixpkgs.hostPlatform = system;
+                fileSystems = {
+                  "/" = {
+                    device = "/dev/disk/by-label/nixos";
+                    fsType = "ext4";
                   };
-                  steamConfig.enable = true;
+                  "/mnt/steam" = {
+                    device = "/dev/disk/by-label/root";
+                    fsType = "btrfs";
+                  };
                 };
-              };
-            }
-          ];
-        };
+                boot.loader.grub.devices = ["nodev"];
+                system.stateVersion = "26.11";
+                swapDevices = [{device = "/dev/disk/by-label/swap";}];
+                users.users.alice.isNormalUser = true;
+                hostSpec.system = {
+                  gamingSpecialisation.enable = true;
+                  developerSpecialisation = {
+                    enable = true;
+                    diskSwap = false;
+                    configuration.environment.etc.developer-hook.text = "on";
+                  };
+                  jovian.gamingMode = true;
+                  gaming = {
+                    sharedLibraries = {
+                      enable = true;
+                      paths = ["/mnt/steam"];
+                    };
+                    steamConfig.enable = true;
+                  };
+                };
+              }
+              extra
+            ];
+          };
+        entry = entryWith {hostSpec.system.gamingSpecialisation.configuration.environment.etc.gaming-hook.text = "on";};
+        # A Steam Deck: Gaming Mode by default, the desktop as the
+        # specialisation; there the gaming hook is refused.
+        deckWith = extra: (entryWith ({hostSpec.system.gamingSpecialisation.defaultEntry = "gaming";} // extra)).config;
+        deck = deckWith {};
+        deskEntry = deck.specialisation.desktop.configuration;
+        failed = c: map (a: a.message) (lib.filter (a: !a.assertion) c.assertions);
         parent = entry.config;
         # NixOS types specialisation.<name>.configuration as the child's
         # own evaluated config, so this is the gaming entry itself.
@@ -136,6 +143,12 @@
         assert expect (parent.swapDevices != [] && gaming.swapDevices != [] && developer.swapDevices == []) "diskSwap = false not only in the developer entry";
         assert expect (gaming.jovian.steam.user == "gamer" && gaming.jovian.steam.autoStart) "gaming entry does not autostart Gaming Mode as gamer";
         assert expect (!developer.programs.steam.config.enable) "steam-config on without Steam";
+        assert expect (!(parent.specialisation ? desktop) && !(deck.specialisation ? gaming) && deck.specialisation ? developer) "wrong specialisations for defaultEntry";
+        assert expect (deck.jovian.steam.autoStart && deck.jovian.steam.user == "gamer") "defaultEntry = gaming does not boot Gaming Mode";
+        assert expect (deskEntry.hostSpec.system.jovian.enable && deskEntry.programs.steam.enable && !(deskEntry.jovian.steam.autoStart or false)) "desktop entry of a gaming-default machine boots Gaming Mode or lost Steam";
+        assert expect (!deck.specialisation.developer.configuration.hostSpec.system.jovian.enable) "developer entry of a gaming-default machine has jovian";
+        assert expect (failed deck == [] && failed entry.config == []) "an entry fails its assertions";
+        assert expect (failed (deckWith {imports = [{hostSpec.system.gamingSpecialisation.configuration.environment.etc.x.text = "y";}];}) != []) "gaming hook accepted with defaultEntry = gaming";
         assert expect (lib.all (e: e.programs.steam.config.enable && lib.getName e.programs.steam.config.defaultCompatTool == lib.getName pkgs.proton-ge-bin) [parent gaming]) "GE-Proton is not Steam's default in the default and gaming entries";
         assert expect (lib.all (u: lib.elem "steam-config-patcher@${u}.service" gaming.systemd.targets.multi-user.wants) ["alice" "gamer"]) "steam-config patcher not run for alice and gamer";
           pkgs.writeText "gaming" "ok";
