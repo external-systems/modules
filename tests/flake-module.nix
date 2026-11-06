@@ -97,9 +97,12 @@
                   configuration.environment.etc.gaming-hook.text = "on";
                 };
                 jovian.gamingMode = true;
-                gaming.sharedLibraries = {
-                  enable = true;
-                  paths = ["/mnt/steam"];
+                gaming = {
+                  sharedLibraries = {
+                    enable = true;
+                    paths = ["/mnt/steam"];
+                  };
+                  steamConfig.enable = true;
                 };
               };
             }
@@ -123,6 +126,9 @@
         assert expect (!(parent.environment.etc ? gaming-hook) && gaming.environment.etc.gaming-hook.text == "on") "configuration hook not only in the gaming entry";
         assert expect (parent.swapDevices == [] && gaming.swapDevices != []) "diskSwap not only in the gaming entry";
         assert expect (gaming.jovian.steam.user == "gamer" && gaming.jovian.steam.autoStart) "gaming entry does not autostart Gaming Mode as gamer";
+        assert expect (!parent.programs.steam.config.enable) "steam-config on without Steam";
+        assert expect (gaming.programs.steam.config.enable && lib.getName gaming.programs.steam.config.defaultCompatTool == lib.getName pkgs.proton-ge-bin) "GE-Proton is not Steam's default in the gaming entry";
+        assert expect (lib.all (u: lib.elem "steam-config-patcher@${u}.service" gaming.systemd.targets.multi-user.wants) ["alice" "gamer"]) "steam-config patcher not run for alice and gamer";
           pkgs.writeText "gaming" "ok";
 
       # Hardware modules configure themselves from the nixos-facter report:

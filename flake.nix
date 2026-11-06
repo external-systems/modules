@@ -36,6 +36,18 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # steam-config-nix: nixosModules.steam-config declares Steam's
+    # default compatibility tool (GE-Proton) and per-game settings for
+    # every user. Its `systems` input only lists x86_64-linux and is
+    # left as is.
+    steam-config-nix = {
+      url = "github:different-name/steam-config-nix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-parts.follows = "flake-parts";
+      };
+    };
+
     # Agent skills: homeModules.agents links the composed skills tree
     # (lib.mkSkillsTree) into every enabled agent.
     skills = {
