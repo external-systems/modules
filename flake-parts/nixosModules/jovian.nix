@@ -29,6 +29,18 @@
           screen (SDDM) instead. The user must exist on the machine.
         '';
       };
+      outputs = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        example = ["DP-2" "HDMI-A-1"];
+        description = ''
+          Display connectors Gaming Mode prefers, in order (gamescope
+          --prefer-output). The first one connected is used; any other
+          output is the fallback. Empty keeps SteamOS's choice: the first
+          connected output, then eDP-1. List connectors with
+          `kscreen-doctor -o` or `ls /sys/class/drm`.
+        '';
+      };
       desktopSession = lib.mkOption {
         type = lib.types.str;
         default =
@@ -118,6 +130,21 @@
           ExecStart = "${lib.getExe' config.services.power-profiles-daemon.package "powerprofilesctl"} set ${cfg.powerProfile.profile}";
         };
       };
+
+      # Gaming Mode's display: SteamOS hard-codes `-O '*',eDP-1` in its
+      # session script, so put the machine's connectors in front of it.
+      nixpkgs.overlays = lib.mkIf (cfg.outputs != []) [
+        (_: prev: {
+          gamescope-session = prev.gamescope-session.overrideAttrs (old: {
+            postPatch =
+              (old.postPatch or "")
+              + ''
+                substituteInPlace gamescope-session \
+                  --replace-fail "-O '*',eDP-1" "-O '${lib.concatStringsSep "," cfg.outputs},*'"
+              '';
+          });
+        })
+      ];
 
       # Compressed RAM swap: big modpacks or a browser beside a game stop
       # paging to disk.

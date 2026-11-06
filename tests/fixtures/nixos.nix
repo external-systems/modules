@@ -58,6 +58,7 @@
     system.jovian = {
       enable = true;
       user = "alice";
+      outputs = ["DP-1"];
       steamdeck = true;
       powerProfile.profile = "performance";
     };
