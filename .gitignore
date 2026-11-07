@@ -4,3 +4,5 @@ result-*
 devenv.local.nix
 _site/
 site/
+# vm-test logs and driver output.
+.vm-tests/

@@ -9,6 +9,7 @@ vars, packages, overlays or fleet values. Every module is off until its
 - `flake.nix`: consumer-facing inputs (all follow external-systems/pkgs where they can) and the imports (`org-pkgs.flakeModules.default`, the modules, tests and docs).
 - `flake-parts/nixosModules/`, `flake-parts/homeModules/`: one module per file, auto-imported (import-tree). `flake-parts/compositions.nix`: the `default` compositions.
 - `tests/flake-module.nix`: the module eval checks; `tests/fixtures/`, `tests/clan-stub.nix`: the eval-all-enabled machine and its stand-ins. Formatting, docs and lock-sync come from `org-pkgs.flakeModules.default` (no dev partition).
+- `vm-tests/`: NixOS VM tests, one `nixosLib.runTest` module per file (org-pkgs `flakeModules.vmTests`), built as `legacyPackages.<system>.vmTests.<name>`. `tests/vm-tests.nix` gives every node `nixosModules.default` and the clan stub.
 - `devenv.yaml` + `devenv.lock` + `devenv.nix`: the dev shell. The org shell comes from external-systems/pkgs (`org-pkgs/devenv` in devenv.yaml).
 - `documentation/`: MkDocs site (`docs/`) and reveal.js deck (`slides/slides.md`), built by `org-pkgs.flakeModules.docs`; `documentation/flake-module.nix` holds the `docs.*` settings.
 
@@ -17,10 +18,12 @@ vars, packages, overlays or fleet values. Every module is off until its
 - `git add` new files before any `nix` command.
 - `fmt`, then `check`. Both must pass before a change is done.
 - After `nix flake update org-pkgs`, run `sync-locks` in the same commit.
+- VM tests: `vm-test --list`, `vm-test <name>` (local KVM) or `vm-test <name> --remote` (remote builder); the exit code is the result, logs in `.vm-tests/<name>/`. See the `vm-tests` skill.
 
 ## Rules
 - Load the `nix-style` skill before editing any `.nix` file.
 - No dev-only inputs: formatting and docs come from org-pkgs (nix-style skill).
+- A new service module should come with a VM test in `vm-tests/`. VM tests run only by hand: never in `checks` or CI. They stay hermetic: secrets are fakes built at build time, with `provisionSecrets = false` and explicit secret-file options.
 - A new toggle gets turned on in `tests/fixtures/nixos.nix` so `checks.eval-all-enabled` covers it.
 - Modules use plain `pkgs` and expose package options; never pin a nixpkgs branch here.
 - No IP literals or account ids: they come from the values flake (external-systems/secrets or not-secrets).
