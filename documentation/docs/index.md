@@ -43,7 +43,8 @@ Every module is off until its `hostSpec.*` (NixOS) or `homeSpec.*`
 ## What the consumer provides
 
 - An overlay with the repo-built packages the modules read
-  (`pkgs.openshell*`, `pkgs.code-sandbox`, `pkgs.devenv`, ...).
+  (`pkgs.openshell*`, `pkgs.code-sandbox`, `pkgs.devenv`, ...), and
+  external-systems/pkgs `overlays.odoo` for `hostSpec.services.odoo`.
 - `inputs.plasma-manager.homeModules.plasma-manager` in
   `home-manager.sharedModules`, for `homeModules.plasma-manager`.
 - `clan.core` (any clan machine) for the modules that declare clan vars
