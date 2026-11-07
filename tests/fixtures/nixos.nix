@@ -97,15 +97,15 @@
       homeSpec = {
         xdg.enable = true;
         agents = {
-          opencode.enabled = true;
+          opencode.enable = true;
           machineContext = {
             repoOwner = "example";
             repoName = "home";
             repoPath = "home";
           };
-          pi.enabled = true;
-          kimi.enabled = true;
-          claude.enabled = true;
+          pi.enable = true;
+          kimi.enable = true;
+          claude.enable = true;
           mcp.github.auth = "pat";
           skills = {
             preset = "full";

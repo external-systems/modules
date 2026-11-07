@@ -7,7 +7,7 @@
   # AI coding agents and the shared repo skill set, consolidated under
   # one namespace:
   #
-  #   homeSpec.agents.skills.enabled   — build the merged skills tree
+  #   homeSpec.agents.skills.enable   — build the merged skills tree
   #     (external-systems/skills: its skills/ + a preset of external
   #     sources, composed by inputs.skills.lib.mkSkillsTree) and wire it
   #     into every enabled agent's skills dir, with the skills runtime
@@ -17,23 +17,29 @@
   #     shared default), "full" or "sandbox".
   #   homeSpec.agents.skills.extraSources — the user's own picks,
   #     appended after the preset (inputs.skills.lib.selections).
-  #   homeSpec.agents.<agent>.enabled  — install pi / kimi / claude /
+  #   homeSpec.agents.<agent>.enable  — install pi / kimi / claude /
   #     opencode and point the agent's skills dir at the shared tree.
+  #
+  # Helpers live next to this file: _machine-context.nix (the
+  # user-level instructions every agent gets) and _claude.nix (the
+  # ~/.claude.json MCP sync and the .nix format hook).
   flake.homeModules.agents = {
     pkgs,
     config,
-    # The NixOS config this home-manager user runs on (null only for
-    # standalone home-manager evals, which never happens here). Used to
-    # identify the machine for the global AGENTS.md machine context below.
+    # The NixOS config this home-manager user runs on; null in a
+    # standalone eval (the OpenShell code-agent image). No `? null`
+    # default: the module system looks every formal up by name and
+    # never applies a default.
     osConfig,
     ...
   }: let
     cfg = config.homeSpec.agents;
     oc = cfg.opencode;
-    headroomCfg = config.homeSpec.programs.headroom;
-    headroomEnabled = config.homeSpec.programs.headroom.enable or false;
-    headroomProxyUrl = "http://${headroomCfg.proxy.host}:${toString headroomCfg.proxy.port}/v1";
     mcpCfg = cfg.mcp;
+    headroomCfg = config.homeSpec.programs.headroom;
+    headroomEnabled = headroomCfg.enable or false;
+    headroomProxyRoot = "http://${headroomCfg.proxy.host}:${toString headroomCfg.proxy.port}";
+    headroomProxyUrl = "${headroomProxyRoot}/v1";
     # Effective headroom MCP switch: the package, proxy URL and systemd
     # service all come from homeSpec.programs.headroom — this only
     # gates whether the agents get the MCP server (and claude the
@@ -53,15 +59,12 @@
     #     OAuth service base override), but only when kimi.config is null:
     #     a managed config.toml (the sandbox image) sets base_url itself.
     headroomRouteProviders = headroomMcpEnabled && mcpCfg.headroom.routeProviders;
-    headroomProxyRoot = "http://${headroomCfg.proxy.host}:${toString headroomCfg.proxy.port}";
-    headroomPiModels = {
-      providers = {
-        kimi-coding = {
-          baseUrl = headroomProxyRoot;
-          headers."x-headroom-base-url" = "https://api.kimi.com/coding";
-        };
-        anthropic.baseUrl = headroomProxyRoot;
+    headroomPiModels.providers = {
+      kimi-coding = {
+        baseUrl = headroomProxyRoot;
+        headers."x-headroom-base-url" = "https://api.kimi.com/coding";
       };
+      anthropic.baseUrl = headroomProxyRoot;
     };
 
     # ---- Shared skills tree (homeSpec.agents.skills) ---- #
@@ -70,7 +73,6 @@
     # linkFarm of per-skill symlinks), reused as the skills dir of every
     # enabled agent below. Custom skills override external ones on name
     # collision; among externals, earlier entries win.
-    # homeSpec.agents.skills.extraSources appends the user's own picks.
     skillsComposition = {
       inherit pkgs;
       inherit (cfg.skills) preset extraSources;
@@ -82,6 +84,30 @@
       // {
         inherit (cfg.skills.runtime) office;
       });
+    skillsRuntimeEnabled = cfg.skills.enable && cfg.skills.runtime.enable;
+
+    # ---- Machine context (user-level instructions) ---- #
+    # Written to every enabled agent's user-level instructions spot:
+    # opencode ~/.config/opencode/AGENTS.md (v2's global discovery spot;
+    # settings.instructions is decoded but never resolved in v2), pi
+    # ~/.pi/agent/AGENTS.md, kimi ~/.kimi-code/AGENTS.md, claude
+    # ~/.claude/CLAUDE.md. Nothing is evaluated unless an agent is on.
+    machineContext = import ./_machine-context.nix {
+      inherit lib osConfig;
+      inherit (pkgs.stdenv.hostPlatform) system;
+      inherit (config.home) homeDirectory;
+      mc = cfg.machineContext;
+      skillsRuntime = skillsRuntimeEnabled;
+      nixWorkflow = wf.enable;
+    };
+
+    claudeLib = import ./_claude.nix {inherit pkgs;};
+
+    # ---- Nix workflow (homeSpec.agents.nixWorkflow) ---- #
+    # One set of defaults, rendered per agent in _nix-workflow.nix.
+    wf = cfg.nixWorkflow;
+    formatOnEdit = wf.enable && wf.formatOnEdit;
+    nixWorkflow = import ./_nix-workflow.nix {inherit lib pkgs;};
 
     # ---- Shared MCP bindings (homeSpec.agents.mcp.*) ---- #
     # PAT file used by the wrapper: explicit patFile override or the
@@ -89,186 +115,19 @@
     # clan var (one token for MCP + git + gh; generator declared by
     # nixosModules/git).
     githubMcpPatFile =
-      if cfg.mcp.github.patFile == null
+      if mcpCfg.github.patFile == null
       then "/run/secrets/vars/shared/github-${config.home.username}/pat"
-      else cfg.mcp.github.patFile;
+      else mcpCfg.github.patFile;
     # Wrapper for the PAT auth method: exports GITHUB_PERSONAL_ACCESS_TOKEN
     # from the PAT file before exec'ing the server. The github-mcp-server
     # exits immediately when that env var is unset, so a readable file is a
     # hard requirement for the server to start.
-    githubMcpWrapper = pkgs.writeShellScriptBin "github-mcp-server-opencode" ''
+    githubMcpWrapper = pkgs.writeShellScriptBin "github-mcp-server-pat" ''
       if [ -r ${lib.escapeShellArg githubMcpPatFile} ]; then
         export GITHUB_PERSONAL_ACCESS_TOKEN="$(cat ${lib.escapeShellArg githubMcpPatFile})"
       fi
-      exec ${lib.getExe cfg.mcp.github.package} stdio "$@"
+      exec ${lib.getExe mcpCfg.github.package} stdio "$@"
     '';
-
-    # ---- Machine context (global AGENTS.md system-prompt header) ---- #
-    # Home-manager runs as a NixOS module here, so osConfig carries the
-    # machine this user is on. From it, the machine's nixos-facter report
-    # (hardware.facter.reportPath, which clan sets from
-    # machines/<host>/facter.json) is read at eval time and summarized
-    # into ~/.config/opencode/AGENTS.md — opencode v2's global AGENTS.md
-    # discovery spot, loaded into the system prompt of every session (a
-    # project's own AGENTS.md still auto-loads on top of it). The
-    # settings.instructions array is NOT a viable wiring: opencode v2
-    # decodes it but never resolves its entries (see
-    # services/www/src/docs/content/instructions.mdx at the pinned
-    # opencode rev).
-    hostName =
-      if osConfig == null
-      then ""
-      else osConfig.networking.hostName;
-    inherit (cfg.machineContext) facterFile;
-    # Not every opencode consumer has a facter report (the installer ISO
-    # has none, KubeVirt agent VMs have a hostname without a machines/
-    # entry), so the facter-derived content is optional and everything
-    # below stays lazy: nothing is read unless this user enables opencode.
-    hasFacter = hostName != "" && facterFile != null && builtins.pathExists facterFile;
-    mc = cfg.machineContext;
-    hasRepo = mc.repoOwner != null && mc.repoName != null;
-    # A synthetic report (machineContext.facterReport, set by VM tests)
-    # overrides the on-disk read; the accessors below work identically on
-    # either shape.
-    facterReport =
-      if cfg.machineContext.facterReport != null
-      then cfg.machineContext.facterReport
-      else if hasFacter
-      then builtins.fromJSON (builtins.readFile facterFile)
-      else {};
-    # Best-effort accessors: facter reports differ per machine and facter
-    # version (absent keys, null values, generic PCI class strings) — any
-    # missing fact is skipped rather than failing the build.
-    facterList = value:
-      if lib.isList value
-      then value
-      else [];
-    facterFirst = list:
-      if list != []
-      then lib.head list
-      else null;
-    facterLine = prefix: parts:
-      if parts == []
-      then null
-      else "- ${prefix}: ${lib.concatStringsSep ", " parts}";
-    # facterGet walks an attrset path (["hardware" "cpu"]), returning null
-    # for any missing step; facterAttr reads one attribute off a possibly
-    # null/missing object. Both are null-safe instead of throwing.
-    facterGet = path: lib.attrByPath path null facterReport;
-    facterAttr = set: name:
-      if lib.isAttrs set
-      then set.${name} or null
-      else null;
-    cpuEntry = facterFirst (facterList (facterGet ["hardware" "cpu"]));
-    cpuModel = facterAttr cpuEntry "model_name";
-    cpuThreads = facterAttr cpuEntry "units";
-    gpuEntry = facterFirst (facterList (facterGet ["hardware" "graphics_card"]));
-    gpuVendor = facterAttr (facterAttr gpuEntry "vendor") "name";
-    gpuDriver = facterAttr gpuEntry "driver";
-    diskModels =
-      lib.unique
-      (lib.remove null
-        (lib.map (d: facterAttr d "model")
-          (facterList (facterGet ["hardware" "disk"]))));
-    memDevices =
-      lib.filter (d: lib.isAttrs d && ((d.size or 0) > 0))
-      (facterList (facterGet ["smbios" "memory_device"]));
-    # memory_device sizes are reported in KiB; empty DIMM slots are 0 and
-    # filtered out above.
-    memGiB = builtins.div (lib.foldl' (sum: d: sum + (d.size or 0)) 0 memDevices) (1024 * 1024);
-    memVendor =
-      if memDevices == []
-      then null
-      else (lib.head memDevices).manufacturer or null;
-    # Token-lean rendering: the first word is enough for a DIMM
-    # manufacturer ("Micron Technology" -> "Micron").
-    memVendorShort =
-      if memVendor == null
-      then null
-      else lib.head (lib.splitString " " memVendor);
-    machineContextHardware = lib.remove null [
-      (facterLine "CPU"
-        (lib.remove null [
-          cpuModel
-          (
-            if cpuThreads == null
-            then null
-            else "${toString cpuThreads} threads"
-          )
-        ]))
-      (facterLine "GPU"
-        (lib.remove null [
-          gpuVendor
-          (
-            if gpuDriver == null
-            then null
-            else "driver ${gpuDriver}"
-          )
-        ]))
-      (facterLine "Memory"
-        (lib.remove null [
-          (
-            if memDevices == []
-            then null
-            else "${toString memGiB} GiB${lib.optionalString (memVendorShort != null) " (${toString (lib.length memDevices)}x ${memVendorShort} DIMMs)"}"
-          )
-        ]))
-      (facterLine "Disk" diskModels)
-    ];
-    # Environment annotation (plain line right after the Machine line):
-    # the explicit option wins — NixOS has no eval-time "this is a VM"
-    # marker (nixpkgs' kubevirt.nix / qemu-vm.nix set none), so VM images
-    # set it (e.g. the KubeVirt agent). Otherwise NixOS containers are
-    # detected via boot.isContainer (a real eval-time signal). Bare metal
-    # emits no line (token-lean).
-    machineContextEnvironment =
-      if cfg.machineContext.environment != null
-      then "Environment: ${cfg.machineContext.environment}"
-      else if (osConfig != null && (osConfig.boot.isContainer or false))
-      then "Environment: nixos-container"
-      else null;
-    # Plain, matter-of-fact and token-lean machine descriptor (no markdown
-    # decoration) — written to the global AGENTS.md loaded into the system
-    # prompt of every opencode session on this machine: what the machine
-    # is, where it runs, what hardware it has and where the facts about it
-    # live. The read-only rule and the AGENTS.md rule apply on every
-    # machine; the hardware and facts paths only when a facter report
-    # exists (installer ISO, KubeVirt agent VMs have none). The repo's
-    # skills (incl. nix-style, the user's Nix-writing preferences) are
-    # advertised by opencode itself from ~/.config/opencode/skills.
-    machineContextLines =
-      (
-        ["Machine: ${hostName} (NixOS ${pkgs.stdenv.hostPlatform.system})"]
-        ++ lib.optionals (machineContextEnvironment != null) [machineContextEnvironment]
-        ++ [""]
-      )
-      ++ lib.optionals (machineContextHardware != [])
-      (["Hardware:"] ++ machineContextHardware ++ [""])
-      ++ lib.optionals hasRepo [
-        "Repo: github.com/${mc.repoOwner}/${mc.repoName}${lib.optionalString (mc.repoPath != null) " (local: ${config.home.homeDirectory}/${mc.repoPath})"}"
-      ]
-      ++ lib.optionals hasFacter [
-        "Machine facts: machines/${hostName}/facter.json, disko.nix, configuration.nix"
-      ]
-      ++ [
-        (
-          if hasRepo
-          then "Machine config is strictly read-only: changes only by repo owner ${mc.repoOwner}, or when instructed to while working in the machine repo."
-          else "Machine config is strictly read-only: change it only when instructed to while working in the machine repo."
-        )
-        ""
-        "Read a repo's AGENTS.md before working in it."
-      ]
-      ++ lib.optionals (cfg.skills.enabled && cfg.skills.runtime.enable) [
-        "Skill script dependencies are preinstalled; don't pip/npm install them."
-      ]
-      ++ lib.optionals (cfg.machineContext.extraText != null)
-      ([""]
-        ++ lib.filter (line: line != "")
-        (lib.splitString "\n" cfg.machineContext.extraText));
-    # The same text rendered once, written to every enabled agent's
-    # user-level instructions spot (see the config blocks below).
-    machineContextText = lib.concatStringsSep "\n" machineContextLines + "\n";
 
     # Local stdio MCP servers shared by all four agents, rendered from
     # homeSpec.agents.mcp.* — one entry per enabled server, command as
@@ -276,73 +135,73 @@
     # dialect (opencode {type=local; command=[...];} vs the
     # claude-compatible {command; args;} JSON).
     sharedMcpCommands =
-      lib.optionalAttrs cfg.mcp.github.enable {
-        github.command = ["${githubMcpWrapper}/bin/github-mcp-server-opencode"];
+      lib.optionalAttrs mcpCfg.github.enable {
+        github.command = ["${githubMcpWrapper}/bin/github-mcp-server-pat"];
       }
       // lib.optionalAttrs headroomMcpEnabled {
         headroom.command = [(lib.getExe headroomCfg.package) "mcp" "serve"];
       }
-      // lib.optionalAttrs cfg.mcp.nixos.enable {
-        nixos.command = ["${lib.getExe inputs.mcp-nixos.packages.${pkgs.stdenv.hostPlatform.system}.mcp-nixos}"];
+      // lib.optionalAttrs mcpCfg.nixos.enable {
+        nixos.command = [(lib.getExe inputs.mcp-nixos.packages.${pkgs.stdenv.hostPlatform.system}.mcp-nixos)];
       }
-      // lib.optionalAttrs cfg.mcp.kubernetes.enable {
+      // lib.optionalAttrs mcpCfg.kubernetes.enable {
         kubernetes.command =
-          ["${lib.getExe pkgs.kubernetes-mcp-server}"]
-          ++ lib.optional cfg.mcp.kubernetes.readOnly "--read-only";
+          [(lib.getExe pkgs.kubernetes-mcp-server)]
+          ++ lib.optional mcpCfg.kubernetes.readOnly "--read-only";
       }
-      // lib.optionalAttrs cfg.mcp.artifacthub.enable {
-        artifacthub.command = ["${lib.getExe pkgs.artifacthub-mcp}"];
+      // lib.optionalAttrs mcpCfg.artifacthub.enable {
+        artifacthub.command = [(lib.getExe pkgs.artifacthub-mcp)];
       }
-      // cfg.mcp.extraServers;
+      // mcpCfg.extraServers;
     # TOML renderer for kimi-code's config.toml (homeSpec.agents.kimi.config).
     tomlFmt = pkgs.formats.toml {};
-    # claude-compatible mcpServers attrset (command + args), shared by the
-    # per-agent renderers below.
+    # claude-compatible mcpServers attrset (command + args), written to
+    # kimi-code (~/.kimi-code/mcp.json) and synced into ~/.claude.json.
     sharedMcpServersClaude =
       lib.mapAttrs (_: v: {
         command = lib.head v.command;
         args = lib.tail v.command;
       })
       sharedMcpCommands;
-    # claude-compatible mcpServers JSON, written to kimi-code
-    # (~/.kimi-code/mcp.json) and merged into claude-code's settings.
-    sharedMcpJson = builtins.toJSON {
-      mcpServers = sharedMcpServersClaude;
-    };
     # pi's own mcp.json: same servers, plus the pi-specific per-server
     # description/exposure fields when the server entry carries them
     # (mcp.extraServers — e.g. the OpenShell code-agent image pins all
     # its servers `direct` so their tools are listed in the system
     # prompt at session start instead of hidden behind codemode).
-    piMcpJson = builtins.toJSON {
-      mcpServers = lib.mapAttrs (_: v:
-        {
-          command = lib.head v.command;
-          args = lib.tail v.command;
-        }
-        // lib.optionalAttrs ((v.description or null) != null) {inherit (v) description;}
-        // lib.optionalAttrs ((v.exposure or null) != null) {inherit (v) exposure;})
-      sharedMcpCommands;
-    };
-    # claude-code's settings.json content: the caller's settings attrs
-    # (homeSpec.agents.claude.settings) merged with the shared MCP table.
-    claudeSettingsJson = builtins.toJSON (
+    piMcpServers = lib.mapAttrs (name: v:
+      sharedMcpServersClaude.${name}
+      // lib.optionalAttrs ((v.description or null) != null) {inherit (v) description;}
+      // lib.optionalAttrs ((v.exposure or null) != null) {inherit (v) exposure;})
+    sharedMcpCommands;
+
+    # ---- claude-code settings ---- #
+    # ~/.claude/settings.json: the Nix workflow defaults, the skills
+    # runtime env, then the caller's claude.settings on top (the caller
+    # wins key by key). The settings env block applies to claude's own
+    # process and survives a launcher's env scrub, unlike HM
+    # sessionVariables, which only login shells see.
+    claudeSettings = lib.foldl' lib.recursiveUpdate {} [
+      (lib.optionalAttrs wf.enable {
+        permissions = {
+          additionalDirectories = ["/nix/store"];
+          inherit (nixWorkflow.claude) allow;
+        };
+        inherit (nixWorkflow.claude) env;
+      })
+      (lib.optionalAttrs formatOnEdit {
+        hooks.PostToolUse = [nixWorkflow.claude.hook];
+      })
+      (lib.optionalAttrs skillsRuntimeEnabled {inherit (skillsRuntime) env;})
       cfg.claude.settings
-      // lib.optionalAttrs (sharedMcpCommands != {}) {
-        mcpServers = sharedMcpServersClaude;
-      }
-    );
+    ];
   in {
     options.homeSpec.agents = {
       # ---- Shared skills: homeSpec.agents.skills.* ---- #
       skills = {
-        enabled = lib.mkOption {
+        enable = lib.mkOption {
           type = lib.types.bool;
-          default =
-            oc.enabled
-            || cfg.kimi.enabled
-            || cfg.pi.enabled
-            || cfg.claude.enabled;
+          default = oc.enable || cfg.kimi.enable || cfg.pi.enable || cfg.claude.enable;
+          defaultText = lib.literalMD "true when any agent is enabled";
           description = ''
             Build the shared skills tree (external-systems/skills' skills/
             merged with the preset's external sources and extraSources via
@@ -382,7 +241,8 @@
             description = ''
               Install the skills runtime (inputs.skills.lib.mkSkillsRuntime)
               for the same composition: the executables, python and node
-              modules the installed skills' scripts call, plus NODE_PATH.
+              modules the installed skills' scripts call, plus NODE_PATH
+              (also set in claude's settings env).
             '';
           };
           office = lib.mkOption {
@@ -398,15 +258,14 @@
       };
 
       # ---- Shared machine context: homeSpec.agents.machineContext.* ---- #
-      # Per-machine system-prompt context: generates user-level instructions
-      # for every enabled agent with the hostname, an optional environment
-      # annotation, hardware facts from the machine's facter.json and
-      # pointers to where machine facts live.
+      # Per-machine user-level instructions for every enabled agent:
+      # hostname, environment, where Nix builds run, hardware from
+      # osConfig.hardware.facter.report, and where machine facts live.
       machineContext = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Generate user-level machine-context instructions for every enabled agent (hostname + environment + hardware facts from machineContext.facterFile).";
+          description = "Generate user-level machine-context instructions for every enabled agent (hostname, environment, Nix builders and hardware facts from osConfig).";
         };
         repoPath = lib.mkOption {
           type = with lib.types; nullOr str;
@@ -440,28 +299,36 @@
             containers are auto-detected (boot.isContainer); bare metal stays null (no line).
           '';
         };
-        facterFile = lib.mkOption {
-          type = with lib.types; nullOr path;
-          default =
-            if osConfig == null
-            then null
-            else osConfig.hardware.facter.reportPath or null;
-          defaultText = lib.literalExpression "osConfig.hardware.facter.reportPath";
-          description = "nixos-facter report summarized into the machine context. Null skips the hardware lines.";
-        };
-        facterReport = lib.mkOption {
-          type = with lib.types; nullOr attrs;
-          default = null;
+      };
+
+      # ---- Shared Nix workflow: homeSpec.agents.nixWorkflow.* ---- #
+      # The same defaults for every enabled agent, each in its own
+      # dialect (_nix-workflow.nix has the per-agent table).
+      nixWorkflow = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
           description = ''
-            Synthetic nixos-facter report overriding the facterFile read
-            (VM tests: the test hostname has no real report). Null reads the real file.
+            Nix workflow defaults for every enabled agent: Nix reads,
+            evaluations and builds plus the dev shell's fmt and check run
+            without a prompt (claude, opencode; pi never prompts; kimi
+            gets no allow rules, it cannot check compound commands),
+            /nix/store is readable, and shell commands get room for
+            closure builds and VM tests (10 min default, 60 min max where
+            the agent has a setting; the machine context says so for the
+            rest).
           '';
+        };
+        formatOnEdit = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Format every .nix file with alejandra right after an agent edits it (claude and kimi hooks, opencode formatter, pi extension). Only with nixWorkflow.enable.";
         };
       };
 
       # ---- pi: homeSpec.agents.pi.* ---- #
       pi = {
-        enabled = lib.mkEnableOption "the pi coding agent (badlogic/pi-mono)";
+        enable = lib.mkEnableOption "the pi coding agent (badlogic/pi-mono)";
         package = lib.mkOption {
           type = lib.types.package;
           default = pkgs.pi-coding-agent;
@@ -502,7 +369,7 @@
 
       # ---- kimi-code: homeSpec.agents.kimi.* ---- #
       kimi = {
-        enabled = lib.mkEnableOption "the Kimi Code CLI (MoonshotAI)";
+        enable = lib.mkEnableOption "the Kimi Code CLI (MoonshotAI)";
         # Package comes from numtide/llm-agents.nix via overlays/default.nix
         # (from-source pnpm build, binary `kimi`, auto-update disabled by the
         # wrapper). Overridable so a caller can pin another build.
@@ -537,7 +404,7 @@
 
       # ---- claude-code: homeSpec.agents.claude.* ---- #
       claude = {
-        enabled = lib.mkEnableOption "the Claude Code CLI (Anthropic)";
+        enable = lib.mkEnableOption "the Claude Code CLI (Anthropic)";
         package = lib.mkOption {
           type = lib.types.package;
           default = pkgs.claude-code;
@@ -549,28 +416,26 @@
           default = true;
           description = "Add the claude-code package to home.packages. The OpenShell code-agent image sets false: it ships its own launcher wrapper (headroom proxy ensure + exec) as the sole bin/claude.";
         };
-        # Extra ~/.claude/settings.json attrs, merged with the shared
-        # mcpServers table — e.g. hasCompletedOnboarding, theme, or an
-        # env block pinning ANTHROPIC_BASE_URL to a local headroom
-        # proxy (the settings env block applies to claude's own process
-        # and survives a process-env scrub, unlike HM sessionVariables).
+        # Extra ~/.claude/settings.json attrs, merged over the defaults
+        # above — e.g. hasCompletedOnboarding, theme, or an env block
+        # pinning ANTHROPIC_BASE_URL to a local headroom proxy.
         settings = lib.mkOption {
           type = lib.types.attrs;
           default = {};
-          description = "Extra claude-code settings.json attrs (merged with the shared mcpServers table).";
+          description = "Extra claude-code settings.json attrs, merged over the homeSpec.agents.nixWorkflow defaults (these win key by key).";
         };
-        # Also write the merged settings to ~/.claude.json (claude
-        # merges either file; the sandbox bakes both so the onboarding
-        # skip survives claude rewriting its mutable state file).
+        # The sandbox bakes ~/.claude.json too (claude merges either
+        # file) so the onboarding skip survives claude rewriting its
+        # mutable state file.
         writeClaudeJson = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Also write the merged settings to ~/.claude.json (claude's mutable state file; claude merges either).";
+          description = "Write ~/.claude.json from claude.settings plus the shared mcpServers (home-manager then owns claude's mutable state file; the activation-time MCP sync is skipped).";
         };
         # ~/.claude/CLAUDE.md override text (user-level memory loaded
         # every session). Takes precedence over the machineContext
-        # CLAUDE.md; a standalone/no-osConfig eval (the OCI sandbox
-        # image) never fires machineContext anyway.
+        # CLAUDE.md; a standalone eval (the OCI sandbox image) never
+        # writes machineContext anyway.
         claudeMd = lib.mkOption {
           type = with lib.types; nullOr str;
           default = null;
@@ -579,21 +444,48 @@
       };
 
       # ---- opencode: homeSpec.agents.opencode.* ---- #
-      opencode.enabled = lib.mkEnableOption "default opencode configuration";
+      opencode = {
+        enable = lib.mkEnableOption "default opencode configuration";
+        package = lib.mkOption {
+          type = lib.types.package;
+          default = pkgs.opencode;
+          defaultText = lib.literalExpression "pkgs.opencode";
+          description = "The opencode package to install (v2: external-systems/pkgs maps pkgs.opencode to llm-agents.nix's opencode2).";
+        };
+        installPackage = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Add the opencode package to home.packages. false writes the config only (an image that ships its own launcher).";
+        };
+        settings = lib.mkOption {
+          type = lib.types.attrs;
+          default = {};
+          description = "Extra opencode.json settings, merged over the module's defaults.";
+        };
+        model = lib.mkOption {
+          type = lib.types.str;
+          default = "glm-5.3-flash";
+          description = "opencode's default model.";
+        };
+        titleModel = lib.mkOption {
+          type = lib.types.str;
+          default = oc.model;
+          defaultText = lib.literalExpression "config.homeSpec.agents.opencode.model";
+          description = "Model of opencode's built-in title agent (the V1 small_model).";
+        };
+      };
 
       # ---- Shared MCP servers: homeSpec.agents.mcp.<name>.enable ---- #
       # ONE namespace, FOUR consumers: every server enabled here is
       # written into each enabled agent's MCP config — opencode
       # (settings.mcp.servers), pi (~/.pi/agent/mcp.json), kimi-code
-      # (~/.kimi-code/mcp.json) and claude-code (~/.claude/settings.json
-      # mcpServers — ~/.claude.json itself is claude's mutable state
-      # file and must stay writable). pi/kimi/claude speak the
+      # (~/.kimi-code/mcp.json) and claude-code (synced into
+      # ~/.claude.json at activation). pi/kimi/claude speak the
       # claude-compatible mcpServers JSON shape ({"mcpServers": {name:
-      # {command, args} / {url}}}); opencode gets its native
-      # {type = local|remote} rendering of the same set. The github
-      # "oauth" method stays opencode-only — file-configured agents
-      # can't run a browser flow, so they always get the local PAT
-      # wrapper.
+      # {command, args}}}); opencode gets its native {type =
+      # local|remote} rendering of the same set. The github "oauth"
+      # method stays opencode-only — file-configured agents can't run a
+      # browser flow, so they always get the local PAT wrapper.
       mcp = {
         # mcp-nixos: NixOS / Home Manager / nix-darwin package & option
         # search (local stdio, flake package).
@@ -627,8 +519,7 @@
             '';
           };
           patFile = lib.mkOption {
-            type = with lib.types;
-              nullOr str;
+            type = with lib.types; nullOr str;
             default = null;
             description = ''
               Path to a file containing the GitHub Personal Access Token.
@@ -686,11 +577,10 @@
             description = "Run the Kubernetes MCP server in read-only mode (--read-only: only readOnlyHint tools exposed).";
           };
         };
-
-        # (https://docs.mcp.varlock.dev/mcp, public, no auth). Off by
-        # default, enabled per user by the consumer. opencode-only: the
-        # file-configured agents get only local servers (remote url MCP
-        # support varies).
+        # Varlock docs (https://docs.mcp.varlock.dev/mcp, public, no
+        # auth). Off by default, enabled per user by the consumer.
+        # opencode-only: the file-configured agents get only local
+        # servers (remote url MCP support varies).
         varlock-docs.enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
@@ -728,8 +618,19 @@
     };
 
     config = lib.mkMerge [
+      {
+        # Checked whether or not opencode is on: a patFile with oauth is
+        # a mistake in any profile.
+        assertions = [
+          {
+            assertion = mcpCfg.github.auth == "oauth" -> mcpCfg.github.patFile == null;
+            message = "homeSpec.agents.mcp: github.patFile is only valid with github.auth = \"pat\" — the oauth and pat methods are mutually exclusive.";
+          }
+        ];
+      }
+
       # ---- skills runtime ---- #
-      (lib.mkIf (cfg.skills.enabled && cfg.skills.runtime.enable) {
+      (lib.mkIf skillsRuntimeEnabled {
         home = {
           packages = [skillsRuntime];
           sessionVariables = skillsRuntime.env;
@@ -737,73 +638,71 @@
       })
 
       # ---- pi ---- #
-      (lib.mkIf cfg.pi.enabled {
+      (lib.mkIf cfg.pi.enable {
         home.packages = lib.optional cfg.pi.installPackage cfg.pi.package;
         # NOTE: mkMerge, not `mkIf … // …` — attrs //-appended to an
-        # mkIf sentinel are SILENTLY DISCARDED by the module system
-        # (verified 2026-10; the pre-refactor version of this block
-        # never wrote pi's mcp.json/AGENTS.md on hosts).
+        # mkIf sentinel are SILENTLY DISCARDED by the module system.
         home.file = lib.mkMerge [
-          (lib.mkIf cfg.skills.enabled {
+          (lib.mkIf cfg.skills.enable {
             ".agents/skills".source = skillsDir;
           })
-          # pi user instructions: ~/.pi/agent/AGENTS.md is applied
-          # across working directories (pi configuration docs) — the
-          # same machine context opencode gets via its global
-          # AGENTS.md. Gated on the shared machineContext switch +
-          # a resolvable hostname, same as the opencode write.
-          (lib.optionalAttrs (cfg.machineContext.enable && hostName != "") {
-            ".pi/agent/AGENTS.md".text = machineContextText;
+          # ~/.pi/agent/AGENTS.md applies across working directories
+          # (pi configuration docs).
+          (lib.mkIf machineContext.enable {
+            ".pi/agent/AGENTS.md".text = machineContext.text;
           })
-          # pi MCP servers: ~/.pi/agent/mcp.json (available in every
-          # project), same shared set as the other agents — with pi's
-          # per-server description/exposure fields when present
-          # (mcp.extraServers).
-          (lib.optionalAttrs (sharedMcpCommands != {}) {
-            ".pi/agent/mcp.json".text = piMcpJson;
+          # ~/.pi/agent/mcp.json (every project), with pi's per-server
+          # description/exposure fields when present (mcp.extraServers).
+          (lib.mkIf (sharedMcpCommands != {}) {
+            ".pi/agent/mcp.json".text = builtins.toJSON {mcpServers = piMcpServers;};
           })
-          (lib.optionalAttrs (cfg.pi.settings != {}) {
+          (lib.mkIf (cfg.pi.settings != {}) {
             ".pi/agent/settings.json".text = builtins.toJSON cfg.pi.settings;
           })
-          (lib.optionalAttrs (cfg.pi.models != null || headroomRouteProviders) {
+          (lib.mkIf (cfg.pi.models != null || headroomRouteProviders) {
             ".pi/agent/models.json".text = builtins.toJSON (
               if headroomRouteProviders
-              then
-                lib.recursiveUpdate headroomPiModels (
-                  if cfg.pi.models == null
-                  then {}
-                  else cfg.pi.models
-                )
+              then lib.recursiveUpdate headroomPiModels (lib.defaultTo {} cfg.pi.models)
               else cfg.pi.models
             );
           })
-          (lib.optionalAttrs (cfg.pi.appendSystemMd != null) {
+          (lib.mkIf (cfg.pi.appendSystemMd != null) {
             ".pi/agent/APPEND_SYSTEM.md".text = cfg.pi.appendSystemMd;
+          })
+          # The Nix workflow as a global pi extension (auto-discovered).
+          (lib.mkIf wf.enable {
+            ".pi/agent/extensions/nix-workflow.ts".text = nixWorkflow.piExtension {inherit formatOnEdit;};
           })
         ];
       })
 
       # ---- kimi-code ---- #
-      (lib.mkIf cfg.kimi.enabled {
+      (lib.mkIf cfg.kimi.enable {
         home = {
           packages = lib.optional cfg.kimi.installPackage cfg.kimi.package;
           file = lib.mkMerge [
-            (lib.mkIf cfg.skills.enabled {
+            (lib.mkIf cfg.skills.enable {
               ".kimi-code/skills".source = skillsDir;
             })
-            # kimi-code user-level AGENTS.md ($KIMI_CODE_HOME/AGENTS.md),
-            # same machine context as the other agents.
-            (lib.optionalAttrs (cfg.machineContext.enable && hostName != "") {
-              ".kimi-code/AGENTS.md".text = machineContextText;
+            # kimi-code user-level AGENTS.md ($KIMI_CODE_HOME/AGENTS.md).
+            (lib.mkIf machineContext.enable {
+              ".kimi-code/AGENTS.md".text = machineContext.text;
             })
-            # kimi MCP servers: ~/.kimi-code/mcp.json, same shared set.
-            (lib.optionalAttrs (sharedMcpCommands != {}) {
-              ".kimi-code/mcp.json".text = sharedMcpJson;
+            (lib.mkIf (sharedMcpCommands != {}) {
+              ".kimi-code/mcp.json".text = builtins.toJSON {mcpServers = sharedMcpServersClaude;};
             })
-            (lib.optionalAttrs (cfg.kimi.config != null) {
-              ".kimi-code/config.toml".source = tomlFmt.generate "kimi-config.toml" cfg.kimi.config;
+            (lib.mkIf (cfg.kimi.config != null) {
+              ".kimi-code/config.toml".source = tomlFmt.generate "kimi-config.toml" (
+                if wf.enable
+                then
+                  nixWorkflow.kimiBaked {
+                    inherit (cfg.kimi) config;
+                    inherit formatOnEdit;
+                  }
+                else cfg.kimi.config
+              );
             })
-            (lib.optionalAttrs (cfg.kimi.systemMd != null) {
+            (lib.mkIf (cfg.kimi.systemMd != null) {
               ".kimi-code/SYSTEM.md".text = cfg.kimi.systemMd;
             })
           ];
@@ -818,40 +717,51 @@
           sessionVariables = lib.mkIf (headroomRouteProviders && cfg.kimi.config == null) {
             KIMI_CODE_BASE_URL = headroomProxyUrl;
           };
+          # The Nix workflow's kimi keys (format hook, task timeout),
+          # merged into the config.toml kimi's /login also writes. Runs
+          # with the workflow off too, so the module's hook is removed.
+          # A baked config (kimi.config) carries them itself.
+          activation = lib.mkIf (cfg.kimi.config == null) {
+            kimiNixWorkflow = config.lib.dag.entryAfter ["writeBoundary"] ''
+              run ${lib.getExe nixWorkflow.kimiConfigMerge} ${lib.escapeShellArgs [
+                "${config.home.homeDirectory}/.kimi-code/config.toml"
+                (builtins.toJSON {
+                  marker = nixWorkflow.kimi.hookMarker;
+                  hooks = lib.optional formatOnEdit nixWorkflow.kimi.hook;
+                  taskTimeoutS =
+                    if wf.enable
+                    then nixWorkflow.kimi.taskTimeoutS
+                    else null;
+                })
+              ]}
+            '';
+          };
         };
       })
 
       # ---- claude-code ---- #
-      (lib.mkIf cfg.claude.enabled {
+      (lib.mkIf cfg.claude.enable {
         home = {
           packages = lib.optional cfg.claude.installPackage cfg.claude.package;
           file = lib.mkMerge [
-            (lib.mkIf cfg.skills.enabled {
+            (lib.mkIf cfg.skills.enable {
               ".claude/skills".source = skillsDir;
             })
-            # claude-code user-level memory (~/.claude/CLAUDE.md), loaded
-            # into every session — same machine context as the other
-            # agents (claude.claudeMd overrides; a standalone eval never
-            # fires this branch anyway).
-            (lib.optionalAttrs (cfg.machineContext.enable && hostName != "" && cfg.claude.claudeMd == null) {
-              ".claude/CLAUDE.md".text = machineContextText;
+            # User-level memory (~/.claude/CLAUDE.md), loaded into every
+            # session; claude.claudeMd overrides the machine context.
+            (lib.mkIf (cfg.claude.claudeMd != null || machineContext.enable) {
+              ".claude/CLAUDE.md".text = lib.defaultTo machineContext.text cfg.claude.claudeMd;
             })
-            (lib.optionalAttrs (cfg.claude.claudeMd != null) {
-              ".claude/CLAUDE.md".text = cfg.claude.claudeMd;
+            # settings.json carries no mcpServers: current claude-code
+            # ignores them there (`claude mcp list`, 2026-10); the live
+            # wiring is ~/.claude.json, synced below.
+            (lib.mkIf (claudeSettings != {}) {
+              ".claude/settings.json".text = builtins.toJSON claudeSettings;
             })
-            # claude settings: ~/.claude/settings.json, same shared MCP
-            # set merged with the caller's extra settings attrs
-            # (claude.settings). NOTE: current claude-code IGNORES
-            # settings.json mcpServers — the live MCP wiring is the
-            # activation-time merge into ~/.claude.json below.
-            (lib.optionalAttrs (sharedMcpCommands != {} || cfg.claude.settings != {}) {
-              ".claude/settings.json".text = claudeSettingsJson;
-            })
-            # The sandbox also bakes ~/.claude.json (claude merges
-            # either file) so the onboarding skip survives claude
-            # rewriting its mutable state file.
-            (lib.optionalAttrs cfg.claude.writeClaudeJson {
-              ".claude.json".text = claudeSettingsJson;
+            (lib.mkIf cfg.claude.writeClaudeJson {
+              ".claude.json".text = builtins.toJSON (
+                cfg.claude.settings // lib.optionalAttrs (sharedMcpServersClaude != {}) {mcpServers = sharedMcpServersClaude;}
+              );
             })
           ];
           # Route claude-code provider traffic through the headroom proxy
@@ -860,78 +770,50 @@
           sessionVariables = lib.mkIf headroomRouteProviders {
             ANTHROPIC_BASE_URL = headroomProxyUrl;
           };
-          # claude-code reads user-scope MCP servers from ~/.claude.json's
-          # top-level mcpServers — the settings.json mcpServers table is
-          # IGNORED (verified with `claude mcp list`, 2026-10;
-          # the settings.json write above stays as documentation / for
-          # versions that do read it). ~/.claude.json is claude's mutable
-          # state file, so HM can't own it — merge the shared set in at
-          # activation instead, preserving every other key. Skipped when
-          # writeClaudeJson already baked the file (the sandbox image: HM
-          # owns ~/.claude.json there, and merging into a store symlink
-          # would corrupt the link).
-          activation = lib.mkIf (sharedMcpCommands != {} && !cfg.claude.writeClaudeJson) {
+          # ~/.claude.json is claude's mutable state file, so the shared
+          # set is synced in at activation (claudeLib.mcpSync), which
+          # also drops servers the module no longer manages. Runs with an
+          # empty set too, so turning the last server off removes it.
+          # Skipped when writeClaudeJson bakes the file (the sandbox
+          # image: home-manager owns it there).
+          activation = lib.mkIf (!cfg.claude.writeClaudeJson) {
             claudeMcpServers = config.lib.dag.entryAfter ["writeBoundary"] ''
-              claudeJson="${config.home.homeDirectory}/.claude.json"
-              if [ -L "$claudeJson" ]; then
-                echo "claudeMcpServers: $claudeJson is a symlink — skipping mcpServers merge" >&2
-              else
-                [ -f "$claudeJson" ] || echo '{}' > "$claudeJson"
-                servers='${builtins.toJSON sharedMcpServersClaude}'
-                tmp=$(mktemp)
-                if ${lib.getExe pkgs.jq} --argjson servers "$servers" \
-                    '.mcpServers = ((.mcpServers // {}) * $servers)' \
-                    "$claudeJson" > "$tmp"; then
-                  cat "$tmp" > "$claudeJson"
-                else
-                  echo "claudeMcpServers: jq merge failed, leaving $claudeJson untouched" >&2
-                fi
-                rm -f "$tmp"
-              fi
+              run ${lib.getExe claudeLib.mcpSync} ${lib.escapeShellArgs [
+                "${config.home.homeDirectory}/.claude.json"
+                "${config.xdg.stateHome}/home-manager/claude-mcp-servers.json"
+                (builtins.toJSON sharedMcpServersClaude)
+                (builtins.toJSON (lib.unique (claudeLib.knownServers ++ lib.attrNames sharedMcpCommands)))
+              ]}
             '';
           };
         };
       })
 
       # ---- opencode ---- #
-      (lib.mkIf oc.enabled {
+      (lib.mkIf oc.enable {
         xdg.configFile = {
-          # Global machine context (built above from osConfig + the machine's
-          # facter report): written to opencode's global AGENTS.md discovery
-          # spot. opencode v2 loads ~/.config/opencode/AGENTS.md into every
-          # session's system prompt (a project's own AGENTS.md still
-          # auto-loads on top). The settings.instructions array is decoded
-          # but never resolved in v2 (see
-          # services/www/src/docs/content/instructions.mdx at the pinned
-          # opencode rev), so file instructions ride AGENTS.md.
-          "opencode/AGENTS.md" = lib.mkIf (cfg.machineContext.enable && hostName != "") {
-            text = machineContextText;
+          "opencode/AGENTS.md" = lib.mkIf machineContext.enable {
+            inherit (machineContext) text;
           };
-
-          # Skills: the shared skillsDir above (external-systems/skills),
-          # linked as ~/.config/opencode/skills.
-          "opencode/skills" = lib.mkIf cfg.skills.enabled {
+          "opencode/skills" = lib.mkIf cfg.skills.enable {
             source = skillsDir;
           };
         };
 
-        assertions = [
-          {
-            assertion = cfg.mcp.github.auth == "oauth" -> cfg.mcp.github.patFile == null;
-            message = "agents.mcp: github.patFile is only valid with github.auth = \"pat\" — the oauth and pat methods are mutually exclusive.";
-          }
-        ];
         programs.opencode = {
           enable = true;
-          # nixpkgs' opencode v2 package.
-          package = pkgs.opencode;
+          # v2 only (external-systems/pkgs: llm-agents.nix's opencode2).
+          package =
+            if oc.installPackage
+            then oc.package
+            else null;
           tui.theme = "tokyonight";
           settings = lib.mkMerge [
             {
-              model = "glm-5.3-flash";
+              inherit (oc) model;
               # small_model V1 field -> the model of the built-in title agent
               # (native V2 shape; V1 small_model is normalized silently).
-              agents.title.model = "glm-5.3-flash";
+              agents.title.model = oc.titleModel;
               # V2 keeps compaction.auto; the V1 tail_turns budget is replaced
               # by checkpoint-based compaction (keep.tokens) — dropped here.
               compaction.auto = true;
@@ -972,61 +854,56 @@
                 }
               ];
             }
-            # Shared local MCP servers (homeSpec.agents.mcp.*): opencode's
-            # native {type = local;} rendering of the same set the
-            # file-configured agents get (pi/kimi mcp.json, claude
-            # settings.json). github is EXCLUDED here when opencode uses
-            # the oauth method — servers.github.type is a typed enum, so
-            # the remote override below would conflict with the shared
-            # local definition (mkMerge does not silently override typed
-            # options).
+            # Shared local MCP servers: opencode's native {type = local;}
+            # rendering. github is EXCLUDED when opencode uses oauth —
+            # servers.github.type is a typed enum, so the remote override
+            # below would conflict with the shared local definition.
             (lib.mkIf (sharedMcpCommands != {}) {
               mcp.servers =
                 lib.mapAttrs (_: v: {
                   type = "local";
                   inherit (v) command;
                 }) (
-                  if cfg.mcp.github.enable && cfg.mcp.github.auth == "oauth"
+                  if mcpCfg.github.enable && mcpCfg.github.auth == "oauth"
                   then removeAttrs sharedMcpCommands ["github"]
                   else sharedMcpCommands
                 );
             })
             # GitHub oauth (opencode-only): remote hosted server,
-            # browser flow on first use. github was already excluded
-            # from the shared local set above when oauth is selected.
-            # pi/kimi/claude always keep the local PAT wrapper.
-            (lib.mkIf (cfg.mcp.github.enable && cfg.mcp.github.auth == "oauth") {
+            # browser flow on first use.
+            (lib.mkIf (mcpCfg.github.enable && mcpCfg.github.auth == "oauth") {
               mcp.servers.github = {
                 type = "remote";
                 url = "https://api.githubcopilot.com/mcp/";
               };
             })
-            # Headroom proxy reroute for opencode's own provider traffic
-            # (the headroom MCP server itself rides the shared set above).
+            # Headroom proxy reroute for opencode's own provider traffic.
             # NOTE: the V1 transport plugin (headroom's entry.opencode.js)
-            # is gone — its default export is a V1 plugin function and V2
-            # only loads V2 plugins ({ id, setup }); headroom compresses
-            # via these providers.*.settings.baseURL overrides (native V2
-            # shape; V1 was provider.<p>.options.baseURL) plus its MCP
-            # compress/retrieve tools. Anthropic only: the proxy carries
-            # ONE upstream per wire pipeline and its OpenAI pipeline is
-            # pinned at kimi-code's managed service (for the kimi reroute)
-            # — an opencode openai/deepseek baseURL override would land
-            # on the wrong upstream.
+            # is gone — V2 only loads V2 plugins ({ id, setup }). Anthropic
+            # only: the proxy carries ONE upstream per wire pipeline and
+            # its OpenAI pipeline is pinned at kimi-code's managed service
+            # (for the kimi reroute) — an openai/deepseek baseURL override
+            # would land on the wrong upstream.
             (lib.mkIf headroomRouteProviders {
-              providers = {
-                anthropic.settings.baseURL = headroomProxyUrl;
-              };
+              providers.anthropic.settings.baseURL = headroomProxyUrl;
             })
-            # Varlock docs: hosted docs-search server
-            # (https://docs.mcp.varlock.dev/mcp) — public, no auth.
-            # opencode-only (remote url MCP is not in the shared set).
-            (lib.mkIf cfg.mcp.varlock-docs.enable {
+            # The Nix workflow: shell allow rules after the base rules
+            # (the last matching rule wins), and alejandra for .nix.
+            (lib.mkIf wf.enable {
+              inherit (nixWorkflow.opencode) permissions;
+            })
+            (lib.mkIf formatOnEdit {
+              inherit (nixWorkflow.opencode) formatter;
+            })
+            # Varlock docs: hosted docs-search server, public, no auth.
+            (lib.mkIf mcpCfg.varlock-docs.enable {
               mcp.servers.varlock-docs = {
                 type = "remote";
                 url = "https://docs.mcp.varlock.dev/mcp";
               };
             })
+            # The caller's settings last.
+            oc.settings
           ];
         };
       })
