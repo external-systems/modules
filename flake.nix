@@ -90,6 +90,7 @@
         (inputs.import-tree ./flake-parts)
         # Module eval checks and their fixtures.
         ./tests/flake-module.nix
+        ./tests/vm-tests.nix
         ./documentation/flake-module.nix
       ];
     };
