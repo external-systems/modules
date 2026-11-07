@@ -210,6 +210,11 @@
         json = name: builtins.fromJSON (builtins.unsafeDiscardStringContext files.${name}.text);
         claude = json ".claude/settings.json";
         context = files.".claude/CLAUDE.md".text;
+        opencodeNixEval = {
+          action = "shell";
+          resource = "nix eval *";
+          effect = "allow";
+        };
         expect = cond: msg: lib.assertMsg cond "agents-wiring: ${msg}";
       in
         assert expect (lib.elem "/nix/store" claude.permissions.additionalDirectories) "claude cannot read /nix/store";
@@ -225,7 +230,61 @@
         assert expect (lib.hasInfix "Repo: github.com/example/home (local: /home/alice/home)" context) "no Repo line";
         assert expect (lib.all (f: files.${f}.text == context) [".pi/agent/AGENTS.md" ".kimi-code/AGENTS.md"]) "agents disagree on the machine context";
         assert expect (hm.xdg.configFile."opencode/AGENTS.md".text == context) "opencode has another machine context";
+        assert expect (lib.hasInfix "Nix builds and VM tests run long" context) "no timeout advice in the machine context";
+        assert expect (lib.elem opencodeNixEval hm.programs.opencode.settings.permissions) "opencode does not allow nix eval";
+        assert expect (hm.programs.opencode.settings.formatter.nixfmt.extensions == [".nix"]) "opencode has no .nix formatter";
+        assert expect (lib.hasInfix "tool_result" files.".pi/agent/extensions/nix-workflow.ts".text) "pi extension does not format";
+        assert expect (hm.home.activation ? kimiNixWorkflow) "no kimi config.toml merge";
           pkgs.writeText "agents-wiring" "ok";
+
+      # Each agent on its own: it writes exactly its own files, and still
+      # gets the shared machine context, MCP servers, skills and Nix
+      # workflow; the other three leave nothing behind.
+      agents-independent = let
+        names = ["claude" "kimi" "opencode" "pi"];
+        own = {
+          claude = [".claude/CLAUDE.md" ".claude/settings.json" ".claude/skills"];
+          kimi = [".kimi-code/AGENTS.md" ".kimi-code/mcp.json" ".kimi-code/skills"];
+          opencode = ["opencode/AGENTS.md" "opencode/opencode.json" "opencode/skills" "opencode/tui.json"];
+          pi = [".agents/skills" ".pi/agent/AGENTS.md" ".pi/agent/extensions/nix-workflow.ts" ".pi/agent/mcp.json" ".pi/agent/models.json"];
+        };
+        activations = {
+          claude = ["claudeMcpServers"];
+          kimi = ["kimiNixWorkflow"];
+          opencode = [];
+          pi = [];
+        };
+        full = machine.config.home-manager.users.alice;
+        solo = only:
+          (machine.extendModules {
+            modules = [
+              {home-manager.users.alice.homeSpec.agents = lib.genAttrs names (a: {enable = lib.mkForce (a == only);});}
+            ];
+          }).config.home-manager.users.alice;
+        enabledNames = lib.filterAttrs (_: f: f.enable);
+        agentFiles = hm:
+          lib.sort lib.lessThan (
+            lib.filter (n: lib.any (p: lib.hasPrefix p n) [".agents/" ".claude/" ".kimi-code/" ".pi/"]) (lib.attrNames (enabledNames hm.home.file))
+            ++ lib.filter (lib.hasPrefix "opencode/") (lib.attrNames (enabledNames hm.xdg.configFile))
+          );
+        agentActivations = hm: lib.filter (n: lib.elem n (lib.concatLists (lib.attrValues activations))) (lib.attrNames hm.home.activation);
+        contextFile = {
+          claude = hm: hm.home.file.".claude/CLAUDE.md".text;
+          kimi = hm: hm.home.file.".kimi-code/AGENTS.md".text;
+          opencode = hm: hm.xdg.configFile."opencode/AGENTS.md".text;
+          pi = hm: hm.home.file.".pi/agent/AGENTS.md".text;
+        };
+        expect = cond: msg: lib.assertMsg cond "agents-independent: ${msg}";
+        checkAlone = only: let
+          hm = solo only;
+        in
+          expect (agentFiles hm == own.${only}) "${only} alone writes ${toString (agentFiles hm)}"
+          && expect (agentActivations hm == activations.${only}) "${only} alone runs ${toString (agentActivations hm)}"
+          && expect hm.homeSpec.agents.skills.enable "${only} alone has no skills"
+          && expect (contextFile.${only} hm == contextFile.${only} full) "${only} alone gets another machine context";
+      in
+        assert lib.all checkAlone names;
+          pkgs.writeText "agents-independent" "ok";
 
       # The machine context rendered from a synthetic NixOS config: the
       # hardware from an inline facter report, local KVM and a remote
@@ -244,6 +303,7 @@
               extraText = null;
             };
             skillsRuntime = true;
+            nixWorkflow = osConfig.networking.hostName == "box";
           }).text;
         box = {
           networking.hostName = "box";
@@ -308,6 +368,7 @@
 
           Read a repo's AGENTS.md before working in it.
           Skill script dependencies are preinstalled; don't pip/npm install them.
+          Nix builds and VM tests run long: give shell commands a timeout of up to 60 min, or run them in the background.
         '';
         # A KubeVirt guest: no kvm module, no builders, no facter report.
         guest = render {
@@ -326,14 +387,23 @@
         assert expect (!(lib.hasInfix "Hardware:" guest || lib.hasInfix "Machine facts" guest)) "guest without a report got hardware lines";
           pkgs.writeText "agents-machine-context" "ok";
 
-      # The ~/.claude.json MCP sync and the .nix format hook, run for
-      # real: managed servers are replaced and pruned, everything else
-      # in the file survives, and a symlinked file is left alone.
-      agents-claude-scripts = let
+      # The agents' scripts, run for real: the ~/.claude.json MCP sync
+      # replaces and prunes managed servers and keeps everything else,
+      # the format hook formats .nix files only (claude's file_path and
+      # kimi's path), and the kimi config.toml merge swaps the module's
+      # hook while keeping what kimi's /login wrote.
+      agents-scripts = let
         claudeLib = import ../flake-parts/homeModules/agents/_claude.nix {inherit pkgs;};
+        nixWorkflow = import ../flake-parts/homeModules/agents/_nix-workflow.nix {inherit lib pkgs;};
+        kimiFragment = hooks:
+          lib.escapeShellArg (builtins.toJSON {
+            marker = nixWorkflow.kimi.hookMarker;
+            inherit hooks;
+            taskTimeoutS = 3600;
+          });
       in
-        pkgs.runCommand "agents-claude-scripts" {
-          nativeBuildInputs = [claudeLib.mcpSync claudeLib.formatNixHook pkgs.jq];
+        pkgs.runCommand "agents-scripts" {
+          nativeBuildInputs = [claudeLib.mcpSync nixWorkflow.formatHook nixWorkflow.kimiConfigMerge pkgs.jq pkgs.yq-go];
         } ''
           set -euo pipefail
           known='["headroom","nixos"]'
@@ -355,13 +425,52 @@
           claude-mcp-sync linked.json state/other.json '{"nixos":{"command":"new","args":[]}}' "$known"
           jq -e '. == {}' owned.json
 
-          # The hook formats .nix files and ignores everything else.
-          printf '{ a=1;}\n' > edited.nix
+          # The format hook: claude's file_path, kimi's path, .nix only.
+          printf '{ a=1;}\n' > claude.nix
+          printf '{ a=1;}\n' > kimi.nix
           printf '{ a=1;}\n' > edited.txt
-          echo '{"tool_input":{"file_path":"edited.nix"}}' | claude-format-nix
-          echo '{"tool_input":{"file_path":"edited.txt"}}' | claude-format-nix
-          [ "$(cat edited.nix)" = "{a = 1;}" ]
+          echo '{"tool_input":{"file_path":"claude.nix"}}' | agent-format-nix
+          echo '{"tool_input":{"path":"kimi.nix"}}' | agent-format-nix
+          echo '{"tool_input":{"file_path":"edited.txt"}}' | agent-format-nix
+          [ "$(cat claude.nix)" = "{a = 1;}" ]
+          [ "$(cat kimi.nix)" = "{a = 1;}" ]
           [ "$(cat edited.txt)" = "{ a=1;}" ]
+
+          # kimi config.toml: /login's keys and the user's own hook stay,
+          # a stale module hook is replaced, the timeout is set.
+          cat > config.toml <<'TOML'
+          default_model = "managed:kimi-code/k3"
+          # written by /login
+          [providers."managed:kimi-code"]
+          type = "kimi"
+
+          [[hooks]]
+          event = "Stop"
+          matcher = ".*"
+          command = "notify-send done"
+          timeout = 5
+
+          [[hooks]]
+          event = "PostToolUse"
+          matcher = "^(Edit|Write)$"
+          command = "/nix/store/old-agent-format-nix/bin/agent-format-nix"
+          timeout = 30
+          TOML
+          kimi-config-merge config.toml ${kimiFragment [nixWorkflow.kimi.hook]}
+          grep -q '# written by /login' config.toml
+          [ "$(yq -p toml -o json '.default_model' config.toml)" = '"managed:kimi-code/k3"' ]
+          [ "$(yq -p toml -oy '.hooks | length' config.toml)" = 2 ]
+          [ "$(yq -p toml -oy '.hooks[0].command' config.toml)" = "notify-send done" ]
+          [ "$(yq -p toml -oy '.hooks[1].command' config.toml)" = ${lib.escapeShellArg nixWorkflow.kimi.hook.command} ]
+          [ "$(yq -p toml -oy '.task.bash_task_timeout_s' config.toml)" = 3600 ]
+
+          # The workflow's hook off: only the user's hook is left.
+          kimi-config-merge config.toml ${kimiFragment []}
+          [ "$(yq -p toml -oy '.hooks | length' config.toml)" = 1 ]
+
+          # No config.toml yet and nothing to add: none is created.
+          kimi-config-merge fresh.toml '{"marker":"agent-format-nix","hooks":[],"taskTimeoutS":null}'
+          [ ! -e fresh.toml ]
           touch $out
         '';
     };

@@ -1,4 +1,4 @@
-# claude-code helpers for agents.nix. A plain function, not a module
+# claude-code's ~/.claude.json MCP sync for agents.nix. A plain function, not a module
 # (the leading _ keeps import-tree off it), so tests/flake-module.nix
 # can build and run the scripts on their own.
 {pkgs}: {
@@ -48,55 +48,6 @@
         echo "claude-mcp-sync: jq merge failed, leaving $claudeJson untouched" >&2
       fi
     '';
-  };
-
-  # PostToolUse hook: formats a .nix file right after claude edits it,
-  # so the alejandra layout never waits for the next `fmt`. claude
-  # passes the tool call as JSON on stdin. Never fails the tool call:
-  # a file that does not parse yet is left for the next edit.
-  formatNixHook = pkgs.writeShellApplication {
-    name = "claude-format-nix";
-    runtimeInputs = [pkgs.alejandra pkgs.jq];
-    text = ''
-      file=$(jq -r '.tool_input.file_path // empty')
-      case "$file" in
-        *.nix)
-          if [ -f "$file" ]; then
-            alejandra --quiet "$file" > /dev/null 2>&1 || true
-          fi
-          ;;
-      esac
-    '';
-  };
-
-  # Commands claude may run without asking when nixWorkflow is on:
-  # reading, evaluating and building Nix, and the org dev shell's fmt
-  # and check scripts. Builds are sandboxed; nothing here deploys or
-  # touches the system profile.
-  nixAllow =
-    map (command: "Bash(${command}:*)") [
-      "nix build"
-      "nix derivation show"
-      "nix eval"
-      "nix flake check"
-      "nix flake metadata"
-      "nix flake show"
-      "nix fmt"
-      "nix log"
-      "nix path-info"
-      "nix store cat"
-      "nix store ls"
-      "nix why-depends"
-      "devenv shell -- check"
-      "devenv shell -- fmt"
-    ]
-    ++ ["Bash(check)" "Bash(fmt)"];
-
-  # Bash timeouts in ms: closure builds and flake checks outlast the
-  # 2-minute default, and a VM test can take most of an hour.
-  bashTimeouts = {
-    BASH_DEFAULT_TIMEOUT_MS = toString (10 * 60 * 1000);
-    BASH_MAX_TIMEOUT_MS = toString (60 * 60 * 1000);
   };
 
   # The server names the module has ever written to ~/.claude.json:

@@ -22,6 +22,10 @@
   mc,
   # The skills runtime is installed (skill script deps preinstalled).
   skillsRuntime,
+  # homeSpec.agents.nixWorkflow.enable: opencode has no timeout setting
+  # and kimi caps foreground commands, so the timeout advice goes here,
+  # for every agent alike.
+  nixWorkflow,
 }: let
   hasOs = osConfig != null;
   hostName =
@@ -137,6 +141,7 @@
       "Read a repo's AGENTS.md before working in it."
     ]
     ++ lib.optional skillsRuntime "Skill script dependencies are preinstalled; don't pip/npm install them."
+    ++ lib.optional nixWorkflow "Nix builds and VM tests run long: give shell commands a timeout of up to 60 min, or run them in the background."
     ++ lib.optionals (mc.extraText != null)
     ([""] ++ lib.filter (l: l != "") (lib.splitString "\n" mc.extraText));
 in {

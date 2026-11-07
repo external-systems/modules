@@ -98,9 +98,16 @@
       inherit (config.home) homeDirectory;
       mc = cfg.machineContext;
       skillsRuntime = skillsRuntimeEnabled;
+      nixWorkflow = wf.enable;
     };
 
     claudeLib = import ./_claude.nix {inherit pkgs;};
+
+    # ---- Nix workflow (homeSpec.agents.nixWorkflow) ---- #
+    # One set of defaults, rendered per agent in _nix-workflow.nix.
+    wf = cfg.nixWorkflow;
+    formatOnEdit = wf.enable && wf.formatOnEdit;
+    nixWorkflow = import ./_nix-workflow.nix {inherit lib pkgs;};
 
     # ---- Shared MCP bindings (homeSpec.agents.mcp.*) ---- #
     # PAT file used by the wrapper: explicit patFile override or the
@@ -174,25 +181,15 @@
     # process and survives a launcher's env scrub, unlike HM
     # sessionVariables, which only login shells see.
     claudeSettings = lib.foldl' lib.recursiveUpdate {} [
-      (lib.optionalAttrs cfg.claude.nixWorkflow.enable {
+      (lib.optionalAttrs wf.enable {
         permissions = {
           additionalDirectories = ["/nix/store"];
-          allow = claudeLib.nixAllow;
+          inherit (nixWorkflow.claude) allow;
         };
-        env = claudeLib.bashTimeouts;
+        inherit (nixWorkflow.claude) env;
       })
-      (lib.optionalAttrs (cfg.claude.nixWorkflow.enable && cfg.claude.nixWorkflow.formatOnEdit) {
-        hooks.PostToolUse = [
-          {
-            matcher = "Edit|MultiEdit|Write";
-            hooks = [
-              {
-                type = "command";
-                command = lib.getExe claudeLib.formatNixHook;
-              }
-            ];
-          }
-        ];
+      (lib.optionalAttrs formatOnEdit {
+        hooks.PostToolUse = [nixWorkflow.claude.hook];
       })
       (lib.optionalAttrs skillsRuntimeEnabled {inherit (skillsRuntime) env;})
       cfg.claude.settings
@@ -304,6 +301,31 @@
         };
       };
 
+      # ---- Shared Nix workflow: homeSpec.agents.nixWorkflow.* ---- #
+      # The same defaults for every enabled agent, each in its own
+      # dialect (_nix-workflow.nix has the per-agent table).
+      nixWorkflow = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Nix workflow defaults for every enabled agent: Nix reads,
+            evaluations and builds plus the dev shell's fmt and check run
+            without a prompt (claude, opencode; pi never prompts; kimi
+            gets no allow rules, it cannot check compound commands),
+            /nix/store is readable, and shell commands get room for
+            closure builds and VM tests (10 min default, 60 min max where
+            the agent has a setting; the machine context says so for the
+            rest).
+          '';
+        };
+        formatOnEdit = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Format every .nix file with alejandra right after an agent edits it (claude and kimi hooks, opencode formatter, pi extension). Only with nixWorkflow.enable.";
+        };
+      };
+
       # ---- pi: homeSpec.agents.pi.* ---- #
       pi = {
         enable = lib.mkEnableOption "the pi coding agent (badlogic/pi-mono)";
@@ -394,32 +416,13 @@
           default = true;
           description = "Add the claude-code package to home.packages. The OpenShell code-agent image sets false: it ships its own launcher wrapper (headroom proxy ensure + exec) as the sole bin/claude.";
         };
-        # Nix workflow defaults in ~/.claude/settings.json; claude.settings
-        # overrides any of them key by key.
-        nixWorkflow = {
-          enable = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = ''
-              Nix workflow defaults for claude: read access to /nix/store,
-              nix eval/build/log/flake check and the dev shell's fmt and
-              check without a prompt, and Bash timeouts long enough for
-              closure builds and VM tests (10 min default, 60 min max).
-            '';
-          };
-          formatOnEdit = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = "Format every .nix file with alejandra right after claude edits it (a PostToolUse hook). Only with nixWorkflow.enable.";
-          };
-        };
         # Extra ~/.claude/settings.json attrs, merged over the defaults
         # above — e.g. hasCompletedOnboarding, theme, or an env block
         # pinning ANTHROPIC_BASE_URL to a local headroom proxy.
         settings = lib.mkOption {
           type = lib.types.attrs;
           default = {};
-          description = "Extra claude-code settings.json attrs, merged over the nixWorkflow defaults (these win key by key).";
+          description = "Extra claude-code settings.json attrs, merged over the homeSpec.agents.nixWorkflow defaults (these win key by key).";
         };
         # The sandbox bakes ~/.claude.json too (claude merges either
         # file) so the onboarding skip survives claude rewriting its
@@ -443,6 +446,22 @@
       # ---- opencode: homeSpec.agents.opencode.* ---- #
       opencode = {
         enable = lib.mkEnableOption "default opencode configuration";
+        package = lib.mkOption {
+          type = lib.types.package;
+          default = pkgs.opencode;
+          defaultText = lib.literalExpression "pkgs.opencode";
+          description = "The opencode package to install (v2: external-systems/pkgs maps pkgs.opencode to llm-agents.nix's opencode2).";
+        };
+        installPackage = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Add the opencode package to home.packages. false writes the config only (an image that ships its own launcher).";
+        };
+        settings = lib.mkOption {
+          type = lib.types.attrs;
+          default = {};
+          description = "Extra opencode.json settings, merged over the module's defaults.";
+        };
         model = lib.mkOption {
           type = lib.types.str;
           default = "glm-5.3-flash";
@@ -650,6 +669,10 @@
           (lib.mkIf (cfg.pi.appendSystemMd != null) {
             ".pi/agent/APPEND_SYSTEM.md".text = cfg.pi.appendSystemMd;
           })
+          # The Nix workflow as a global pi extension (auto-discovered).
+          (lib.mkIf wf.enable {
+            ".pi/agent/extensions/nix-workflow.ts".text = nixWorkflow.piExtension {inherit formatOnEdit;};
+          })
         ];
       })
 
@@ -669,7 +692,15 @@
               ".kimi-code/mcp.json".text = builtins.toJSON {mcpServers = sharedMcpServersClaude;};
             })
             (lib.mkIf (cfg.kimi.config != null) {
-              ".kimi-code/config.toml".source = tomlFmt.generate "kimi-config.toml" cfg.kimi.config;
+              ".kimi-code/config.toml".source = tomlFmt.generate "kimi-config.toml" (
+                if wf.enable
+                then
+                  nixWorkflow.kimiBaked {
+                    inherit (cfg.kimi) config;
+                    inherit formatOnEdit;
+                  }
+                else cfg.kimi.config
+              );
             })
             (lib.mkIf (cfg.kimi.systemMd != null) {
               ".kimi-code/SYSTEM.md".text = cfg.kimi.systemMd;
@@ -685,6 +716,25 @@
           # https://api.kimi.ai/coding/v1 — the consumer sets it).
           sessionVariables = lib.mkIf (headroomRouteProviders && cfg.kimi.config == null) {
             KIMI_CODE_BASE_URL = headroomProxyUrl;
+          };
+          # The Nix workflow's kimi keys (format hook, task timeout),
+          # merged into the config.toml kimi's /login also writes. Runs
+          # with the workflow off too, so the module's hook is removed.
+          # A baked config (kimi.config) carries them itself.
+          activation = lib.mkIf (cfg.kimi.config == null) {
+            kimiNixWorkflow = config.lib.dag.entryAfter ["writeBoundary"] ''
+              run ${lib.getExe nixWorkflow.kimiConfigMerge} ${lib.escapeShellArgs [
+                "${config.home.homeDirectory}/.kimi-code/config.toml"
+                (builtins.toJSON {
+                  marker = nixWorkflow.kimi.hookMarker;
+                  hooks = lib.optional formatOnEdit nixWorkflow.kimi.hook;
+                  taskTimeoutS =
+                    if wf.enable
+                    then nixWorkflow.kimi.taskTimeoutS
+                    else null;
+                })
+              ]}
+            '';
           };
         };
       })
@@ -752,8 +802,11 @@
 
         programs.opencode = {
           enable = true;
-          # nixpkgs' opencode v2 package.
-          package = pkgs.opencode;
+          # v2 only (external-systems/pkgs: llm-agents.nix's opencode2).
+          package =
+            if oc.installPackage
+            then oc.package
+            else null;
           tui.theme = "tokyonight";
           settings = lib.mkMerge [
             {
@@ -834,6 +887,14 @@
             (lib.mkIf headroomRouteProviders {
               providers.anthropic.settings.baseURL = headroomProxyUrl;
             })
+            # The Nix workflow: shell allow rules after the base rules
+            # (the last matching rule wins), and alejandra for .nix.
+            (lib.mkIf wf.enable {
+              inherit (nixWorkflow.opencode) permissions;
+            })
+            (lib.mkIf formatOnEdit {
+              inherit (nixWorkflow.opencode) formatter;
+            })
             # Varlock docs: hosted docs-search server, public, no auth.
             (lib.mkIf mcpCfg.varlock-docs.enable {
               mcp.servers.varlock-docs = {
@@ -841,6 +902,8 @@
                 url = "https://docs.mcp.varlock.dev/mcp";
               };
             })
+            # The caller's settings last.
+            oc.settings
           ];
         };
       })
