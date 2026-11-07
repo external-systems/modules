@@ -17,6 +17,8 @@
     (import ./overlay.nix)
     # The VS Code extension sets homeModules.vscodium reads.
     inputs.org-pkgs.overlays.vscode-extensions
+    # The odoo19 hostSpec.services.odoo runs (nixpkgs' does not evaluate).
+    inputs.org-pkgs.overlays.odoo
   ];
 
   # Minimal bootable shape.
@@ -54,6 +56,7 @@
       nix-ld.enable = true;
       nix.enable = true;
       ollama.enable = true;
+      odoo.enable = true;
       onepassword = {
         enable = true;
         polkitPolicyOwners = ["alice"];

@@ -48,12 +48,14 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `pkgs.headroom-sandbox`, and for `homeModules.agents` `pkgs.pi-coding-agent`,
   `pkgs.kimi-code`, `pkgs.claude-code`, `pkgs.artifacthub-mcp` and
   `pkgs.kubernetes-mcp-server`. Apply an overlay that provides them (home's
-  `overlays.default` does).
+  `overlays.default` does). `hostSpec.services.odoo` reads `pkgs.odoo19`
+  as fixed by external-systems/pkgs `overlays.odoo` (in its
+  `overlays.default`): nixpkgs' own odoo19 does not evaluate.
 - **plasma-manager.** `homeModules.plasma-manager` sets `programs.plasma`;
   add `inputs.plasma-manager.homeModules.plasma-manager` to
   `home-manager.sharedModules`.
-- **clan-core.** `clan`, `git`, `ssh`, `storagebox` and `openshell-gateway`
-  declare clan vars generators, so they need `clan.core` (any clan
+- **clan-core.** `clan`, `git`, `ssh`, `storagebox`, `openshell-gateway`
+  and `odoo` declare clan vars generators, so they need `clan.core` (any clan
   machine has it).
 - **Package choice.** Modules use plain `pkgs` and never pin a nixpkgs
   branch. To take a package from elsewhere (e.g. unstable), set the
