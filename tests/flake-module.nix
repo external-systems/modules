@@ -198,6 +198,172 @@
         assert expect (turing.hardware.nvidia.open && turing.hardware.nvidia.branch == "stable") "Turing not on the open module and stable";
         assert expect (!optedOut.hostSpec.hardware.gpu.intel.enable) "a machine cannot switch a detected GPU off";
           pkgs.writeText "hardware-from-facter" "ok";
+
+      # What homeModules.agents writes for alice: claude's settings carry
+      # the Nix workflow and the skills runtime env but no (ignored)
+      # mcpServers, the github pat server is local everywhere, pi's
+      # models.json carries the headroom reroute, and every agent gets
+      # the same machine context.
+      agents-wiring = let
+        hm = machine.config.home-manager.users.alice;
+        files = hm.home.file;
+        json = name: builtins.fromJSON (builtins.unsafeDiscardStringContext files.${name}.text);
+        claude = json ".claude/settings.json";
+        context = files.".claude/CLAUDE.md".text;
+        expect = cond: msg: lib.assertMsg cond "agents-wiring: ${msg}";
+      in
+        assert expect (lib.elem "/nix/store" claude.permissions.additionalDirectories) "claude cannot read /nix/store";
+        assert expect (lib.elem "Bash(nix eval:*)" claude.permissions.allow) "nix eval not allowed";
+        assert expect (claude.env ? BASH_MAX_TIMEOUT_MS && claude.env ? NODE_PATH) "claude env misses the timeouts or the skills runtime";
+        assert expect (lib.length claude.hooks.PostToolUse == 1) "no .nix format hook";
+        assert expect (!(claude ? mcpServers)) "settings.json carries mcpServers";
+        assert expect (hm.home.activation ? claudeMcpServers) "no ~/.claude.json MCP sync";
+        assert expect (hm.programs.opencode.settings.mcp.servers.github.type == "local") "opencode github not on the pat server";
+        assert expect ((json ".kimi-code/mcp.json").mcpServers ? github) "kimi has no github server";
+        assert expect ((json ".pi/agent/models.json").providers.kimi-coding.headers ? x-headroom-base-url) "pi models.json lacks the headroom reroute";
+        assert expect (lib.hasPrefix "Machine: eval (NixOS " context) "no Machine line";
+        assert expect (lib.hasInfix "Repo: github.com/example/home (local: /home/alice/home)" context) "no Repo line";
+        assert expect (lib.all (f: files.${f}.text == context) [".pi/agent/AGENTS.md" ".kimi-code/AGENTS.md"]) "agents disagree on the machine context";
+        assert expect (hm.xdg.configFile."opencode/AGENTS.md".text == context) "opencode has another machine context";
+          pkgs.writeText "agents-wiring" "ok";
+
+      # The machine context rendered from a synthetic NixOS config: the
+      # hardware from an inline facter report, local KVM and a remote
+      # builder, line for line.
+      agents-machine-context = let
+        render = osConfig:
+          (import ../flake-parts/homeModules/agents/_machine-context.nix {
+            inherit lib osConfig system;
+            homeDirectory = "/home/alice";
+            mc = {
+              enable = true;
+              repoOwner = "example";
+              repoName = "home";
+              repoPath = "home";
+              environment = null;
+              extraText = null;
+            };
+            skillsRuntime = true;
+          }).text;
+        box = {
+          networking.hostName = "box";
+          boot.kernelModules = ["kvm-amd"];
+          nix = {
+            settings.system-features = ["kvm" "nixos-test"];
+            distributedBuilds = true;
+            buildMachines = [
+              {
+                hostName = "builder";
+                system = null;
+                systems = ["x86_64-linux" "aarch64-linux"];
+                supportedFeatures = ["big-parallel" "kvm"];
+              }
+            ];
+          };
+          hardware.facter = {
+            reportPath = "/machines/box/facter.json";
+            report = {
+              hardware = {
+                cpu = [
+                  {
+                    model_name = "Example CPU";
+                    units = 16;
+                  }
+                ];
+                graphics_card = [
+                  {
+                    vendor.name = "Example GPU";
+                    driver = "amdgpu";
+                  }
+                ];
+                disk = [{model = "Example SSD";}];
+              };
+              smbios.memory_device = [
+                {
+                  size = 16 * 1024 * 1024;
+                  manufacturer = "Micron Technology";
+                }
+                {size = 0;}
+                {
+                  size = 16 * 1024 * 1024;
+                  manufacturer = "Micron Technology";
+                }
+              ];
+            };
+          };
+        };
+        expected = ''
+          Machine: box (NixOS ${system})
+          Nix builds: local KVM; remote builders: builder (x86_64-linux, aarch64-linux, kvm)
+
+          Hardware:
+          - CPU: Example CPU, 16 threads
+          - GPU: Example GPU, driver amdgpu
+          - Memory: 32 GiB (2x Micron DIMMs)
+          - Disk: Example SSD
+
+          Repo: github.com/example/home (local: /home/alice/home)
+          Machine facts: machines/box/facter.json, disko.nix, configuration.nix
+          Machine config is strictly read-only: changes only by repo owner example, or when instructed to while working in the machine repo.
+
+          Read a repo's AGENTS.md before working in it.
+          Skill script dependencies are preinstalled; don't pip/npm install them.
+        '';
+        # A KubeVirt guest: no kvm module, no builders, no facter report.
+        guest = render {
+          networking.hostName = "guest";
+          boot.kernelModules = [];
+          nix.settings.system-features = ["kvm"];
+          hardware.facter = {
+            reportPath = null;
+            report = {};
+          };
+        };
+        expect = cond: msg: lib.assertMsg cond "agents-machine-context: ${msg}";
+      in
+        assert expect (render box == expected) "box rendered as:\n${render box}";
+        assert expect (lib.hasInfix "Nix builds: no local KVM\n" guest) "guest claims local KVM";
+        assert expect (!(lib.hasInfix "Hardware:" guest || lib.hasInfix "Machine facts" guest)) "guest without a report got hardware lines";
+          pkgs.writeText "agents-machine-context" "ok";
+
+      # The ~/.claude.json MCP sync and the .nix format hook, run for
+      # real: managed servers are replaced and pruned, everything else
+      # in the file survives, and a symlinked file is left alone.
+      agents-claude-scripts = let
+        claudeLib = import ../flake-parts/homeModules/agents/_claude.nix {inherit pkgs;};
+      in
+        pkgs.runCommand "agents-claude-scripts" {
+          nativeBuildInputs = [claudeLib.mcpSync claudeLib.formatNixHook pkgs.jq];
+        } ''
+          set -euo pipefail
+          known='["headroom","nixos"]'
+          echo '{"numStartups":3,"mcpServers":{"headroom":{"command":"old"},"mine":{"command":"x"},"nixos":{"command":"old","env":{"A":"1"}}}}' > claude.json
+
+          # First run, no state file: the known names are pruned first.
+          claude-mcp-sync claude.json state/servers.json '{"nixos":{"command":"new","args":[]}}' "$known"
+          jq -e '.numStartups == 3' claude.json
+          jq -e '.mcpServers == {"mine":{"command":"x"},"nixos":{"command":"new","args":[]}}' claude.json
+          jq -e '. == ["nixos"]' state/servers.json
+
+          # The last managed server turned off: removed, "mine" kept.
+          claude-mcp-sync claude.json state/servers.json '{}' "$known"
+          jq -e '.mcpServers == {"mine":{"command":"x"}}' claude.json
+
+          # A symlinked file (home-manager owns it) is never written.
+          echo '{}' > owned.json
+          ln -s owned.json linked.json
+          claude-mcp-sync linked.json state/other.json '{"nixos":{"command":"new","args":[]}}' "$known"
+          jq -e '. == {}' owned.json
+
+          # The hook formats .nix files and ignores everything else.
+          printf '{ a=1;}\n' > edited.nix
+          printf '{ a=1;}\n' > edited.txt
+          echo '{"tool_input":{"file_path":"edited.nix"}}' | claude-format-nix
+          echo '{"tool_input":{"file_path":"edited.txt"}}' | claude-format-nix
+          [ "$(cat edited.nix)" = "{a = 1;}" ]
+          [ "$(cat edited.txt)" = "{ a=1;}" ]
+          touch $out
+        '';
     };
   };
 }
