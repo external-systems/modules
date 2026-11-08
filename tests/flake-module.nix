@@ -163,6 +163,9 @@
         # entry (also its Switch to Desktop), on a Deck's default entry too.
         assert expect (!parent.hostSpec.system.jovian.desktopDeckClient && gaming.hostSpec.system.jovian.desktopDeckClient && deck.hostSpec.system.jovian.desktopDeckClient) "desktop Steam client branch not regular outside Gaming Mode entries";
         assert expect (parent.programs.steam.package.drvPath != gaming.programs.steam.package.drvPath) "desktop Steam package not overridden in the default entry";
+        # Gaming Mode's Steam is not programs.steam.package: it needs the
+        # compat tools (GE-Proton) passed in its session environment.
+        assert expect (lib.all (e: lib.hasInfix "proton-ge-bin" (e.jovian.steam.environment.STEAM_EXTRA_COMPAT_TOOLS_PATHS or "")) [gaming deck]) "Gaming Mode's Steam does not see GE-Proton";
           pkgs.writeText "gaming" "ok";
 
       # Hardware modules configure themselves from the nixos-facter report:
