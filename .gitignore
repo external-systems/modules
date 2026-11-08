@@ -6,3 +6,4 @@ _site/
 site/
 # vm-test logs and driver output.
 .vm-tests/
+.baton-pass/
