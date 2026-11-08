@@ -15,9 +15,13 @@
 #   <path>/users/<user>/steamapps/    <user> 0700 (manifests, compatdata,
 #     common -> <path>/common          shadercache, downloading)
 #
-# Each user adds <path>/users/<user> once as a library in Steam's Storage
-# settings. A game another user already installed then installs by
-# verifying the files in common/, with no download.
+# steam-library-register@<user> adds <path>/users/<user> to each user's
+# Steam as a library, and by default makes the first one where new games
+# install (_steam-library-register.py has the files it writes). A game
+# another user already installed then installs into it by verifying the
+# files in common/, with no download. Steam must have run once for the
+# user, and it only takes effect while Steam is closed: the next deploy
+# or boot after the user first opens Steam, or when Steam next exits.
 {
   flake.nixosModules.gaming = {
     config,
@@ -44,6 +48,12 @@
       mounts;
 
     groupOf = user: config.users.users.${user}.group;
+
+    libraryUnit = path: "steam-library-${utils.escapeSystemdPath path}.service";
+
+    registerLibraries = pkgs.writers.writePython3Bin "steam-library-register" {
+      libraries = with pkgs.python3Packages; [psutil vdf];
+    } (builtins.readFile ./_steam-library-register.py);
 
     setupScript = path: ''
       install -d -m 0755 -o root -g root ${lib.escapeShellArg path} ${lib.escapeShellArg "${path}/users"}
@@ -140,6 +150,19 @@
           example = "games";
           description = "Group that owns and may write the shared game files.";
         };
+        makeDefault = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          example = false;
+          description = ''
+            Make each user's library on the first path Steam's default
+            install location, for every Steam account of that user (the
+            star in Steam's Storage settings), so games installed from
+            Gaming Mode land in the shared library too. A default picked
+            in Steam is set back on the next deploy or boot; false
+            leaves the choice to each user.
+          '';
+        };
       };
     };
 
@@ -205,22 +228,47 @@
 
         users.groups.${libs.group}.members = libs.users;
 
-        # A service per path rather than tmpfiles: RequiresMountsFor keeps
-        # it from running when a nofail disk is missing, so no stray
-        # folders appear on the root filesystem.
-        systemd.services = lib.listToAttrs (map (path:
-          lib.nameValuePair "steam-library-${utils.escapeSystemdPath path}" {
-            description = "Shared Steam library at ${path}";
-            wantedBy = ["multi-user.target"];
-            unitConfig.RequiresMountsFor = path;
-            path = [pkgs.acl pkgs.coreutils];
-            serviceConfig = {
-              Type = "oneshot";
-              RemainAfterExit = true;
+        systemd = {
+          # A service per path rather than tmpfiles: RequiresMountsFor keeps
+          # it from running when a nofail disk is missing, so no stray
+          # folders appear on the root filesystem.
+          services =
+            lib.listToAttrs (map (path:
+              lib.nameValuePair (lib.removeSuffix ".service" (libraryUnit path)) {
+                description = "Shared Steam library at ${path}";
+                wantedBy = ["multi-user.target"];
+                unitConfig.RequiresMountsFor = path;
+                path = [pkgs.acl pkgs.coreutils];
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                };
+                script = setupScript path;
+              })
+            libs.paths)
+            // {
+              # Runs as the user. Type=exec, left inactive after it ends,
+              # like steam-config-patcher@: every activation starts it
+              # again, and a deploy never waits while it waits for Steam
+              # to close.
+              "steam-library-register@" = {
+                description = "Register the shared Steam libraries with %i's Steam";
+                after = map libraryUnit libs.paths;
+                # At boot, before Gaming Mode's autologin starts Steam.
+                before = ["display-manager.service"];
+                serviceConfig = {
+                  Type = "exec";
+                  User = "%i";
+                  ExecStart = lib.escapeShellArgs (
+                    [(lib.getExe registerLibraries)]
+                    ++ lib.optional libs.makeDefault "--make-default"
+                    ++ libs.paths
+                  );
+                };
+              };
             };
-            script = setupScript path;
-          })
-        libs.paths);
+          targets.multi-user.wants = map (user: "steam-library-register@${user}.service") libs.users;
+        };
       })
     ];
   };

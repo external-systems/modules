@@ -151,6 +151,13 @@
         assert expect (failed (deckWith {imports = [{hostSpec.system.gamingSpecialisation.configuration.environment.etc.x.text = "y";}];}) != []) "gaming hook accepted with defaultEntry = gaming";
         assert expect (lib.all (e: e.programs.steam.config.enable && lib.getName e.programs.steam.config.defaultCompatTool == lib.getName pkgs.proton-ge-bin) [parent gaming]) "GE-Proton is not Steam's default in the default and gaming entries";
         assert expect (lib.all (u: lib.elem "steam-config-patcher@${u}.service" gaming.systemd.targets.multi-user.wants) ["alice" "gamer"]) "steam-config patcher not run for alice and gamer";
+        assert expect (parent.systemd.services."steam-config-patcher@".serviceConfig ? ExecCondition) "steam-config patcher fails instead of skipping users without Steam";
+        assert expect (lib.all (e: lib.all (u: lib.elem "steam-library-register@${u}.service" e.systemd.targets.multi-user.wants) ["alice" "gamer"]) [parent gaming developer]) "shared libraries not registered for alice and gamer in every entry";
+        assert expect (let
+          register = parent.systemd.services."steam-library-register@";
+        in
+          lib.hasSuffix "--make-default /mnt/steam" register.serviceConfig.ExecStart
+          && lib.elem "steam-library-mnt-steam.service" register.after) "library registration not default, or not after its library service";
           pkgs.writeText "gaming" "ok";
 
       # Hardware modules configure themselves from the nixos-facter report:

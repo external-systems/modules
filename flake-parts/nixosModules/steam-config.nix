@@ -57,6 +57,20 @@
         enable = true;
         inherit (cfg) defaultCompatTool onSteamRunning;
       };
+
+      # The patcher fails for a user who never opened Steam ("could not
+      # locate a Steam installation", the same three folders it checks),
+      # and a failed unit makes every deploy report a failed activation.
+      # A failing ExecCondition skips the unit instead.
+      systemd.services."steam-config-patcher@".serviceConfig.ExecCondition = let
+        steamInstalled = pkgs.writeShellScript "steam-installed" ''
+          for dir in "$HOME/.steam/root" "$HOME/.steam/steam" "$HOME/.local/share/Steam"; do
+            [ -d "$dir" ] && exit 0
+          done
+          echo "no Steam install for $USER yet: skipped"
+          exit 1
+        '';
+      in "${steamInstalled}";
     };
   };
 }
