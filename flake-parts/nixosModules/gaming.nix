@@ -22,6 +22,16 @@
 # files in common/, with no download. Steam must have run once for the
 # user, and it only takes effect while Steam is closed: the next deploy
 # or boot after the user first opens Steam, or when Steam next exits.
+#
+# Steam does not write game files in common/: it downloads into the
+# user's own steamapps/downloading and moves them in, so they keep that
+# user's group (users) and mode (no group write) and miss the folder's
+# default ACL. Another user's Steam can then read the game but not update
+# or verify it ("missing file privileges"). steam-library-share@<user>
+# hands that user's files in common/ to the group with group write, as
+# the user (an owner may chgrp to a group it is in): at boot, on every
+# deploy, and every few minutes from a timer. It never follows symlinks
+# and never touches another user's files.
 {
   flake.nixosModules.gaming = {
     config,
@@ -50,6 +60,22 @@
     groupOf = user: config.users.users.${user}.group;
 
     libraryUnit = path: "steam-library-${utils.escapeSystemdPath path}.service";
+
+    shareScript = ''
+      user=$(id -un)
+      for root in ${lib.escapeShellArgs libs.paths}; do
+        common="$root/common"
+        [ -d "$common" ] || continue
+        # A file Steam is moving can vanish between find and the change:
+        # report and carry on, the next run gets the rest.
+        find "$common" -xdev -user "$user" ! -type l ! -group ${libs.group} \
+          -exec chgrp ${libs.group} {} + || echo "some files kept their group" >&2
+        find "$common" -xdev -user "$user" \( -type f -o -type d \) ! -perm -g+w \
+          -exec chmod g+rwX {} + || echo "some files kept their mode" >&2
+        find "$common" -xdev -user "$user" -type d ! -perm -g+s \
+          -exec chmod g+s {} + || echo "some folders kept their mode" >&2
+      done
+    '';
 
     registerLibraries = pkgs.writers.writePython3Bin "steam-library-register" {
       libraries = with pkgs.python3Packages; [psutil vdf];
@@ -266,8 +292,36 @@
                   );
                 };
               };
+
+              "steam-library-share@" = {
+                description = "Share %i's game files in the shared Steam libraries";
+                after = map libraryUnit libs.paths;
+                before = ["display-manager.service"];
+                path = [pkgs.coreutils pkgs.findutils];
+                serviceConfig = {
+                  Type = "oneshot";
+                  User = "%i";
+                  Group = libs.group;
+                  Nice = 19;
+                  IOSchedulingClass = "idle";
+                };
+                script = shareScript;
+              };
             };
-          targets.multi-user.wants = map (user: "steam-library-register@${user}.service") libs.users;
+          timers = lib.listToAttrs (map (user:
+            lib.nameValuePair "steam-library-share-${user}" {
+              description = "Share ${user}'s game files in the shared Steam libraries";
+              wantedBy = ["timers.target"];
+              timerConfig = {
+                OnBootSec = "2min";
+                OnUnitActiveSec = "3min";
+                Unit = "steam-library-share@${user}.service";
+              };
+            })
+          libs.users);
+          targets.multi-user.wants =
+            map (user: "steam-library-register@${user}.service") libs.users
+            ++ map (user: "steam-library-share@${user}.service") libs.users;
         };
       })
     ];
