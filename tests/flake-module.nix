@@ -158,6 +158,11 @@
         in
           lib.hasSuffix "--make-default /mnt/steam" register.serviceConfig.ExecStart
           && lib.elem "steam-library-mnt-steam.service" register.after) "library registration not default, or not after its library service";
+        # The Deck client (-steamdeck) disables the Store on the desktop:
+        # the regular client there, the Deck client in the Gaming Mode
+        # entry (also its Switch to Desktop), on a Deck's default entry too.
+        assert expect (!parent.hostSpec.system.jovian.desktopDeckClient && gaming.hostSpec.system.jovian.desktopDeckClient && deck.hostSpec.system.jovian.desktopDeckClient) "desktop Steam client branch not regular outside Gaming Mode entries";
+        assert expect (parent.programs.steam.package.drvPath != gaming.programs.steam.package.drvPath) "desktop Steam package not overridden in the default entry";
           pkgs.writeText "gaming" "ok";
 
       # Hardware modules configure themselves from the nixos-facter report:
