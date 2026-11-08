@@ -69,6 +69,23 @@
           relaunches Gaming Mode instead.
         '';
       };
+      desktopDeckClient = lib.mkOption {
+        type = lib.types.bool;
+        default = gamingMode;
+        defaultText = lib.literalExpression "gamingMode (in this boot entry)";
+        example = true;
+        description = ''
+          Whether Steam started from the desktop (the app launcher, Switch
+          to Desktop) runs the Steam Deck client branch (`-steamdeck`), as
+          Jovian does by default for the Deck's Steam + X on-screen
+          keyboard. On a KDE desktop that client disables the Store,
+          Community and the Friends menu, so false runs the regular client
+          there. Gaming Mode always runs the Deck client. Steam updates
+          itself for a minute whenever one user's Steam changes branch, so
+          the default keeps the Deck client in the entry that boots Gaming
+          Mode, whose Switch to Desktop runs as the same user.
+        '';
+      };
       steamdeck = lib.mkEnableOption ''
         Steam Deck hardware support (jovian.devices.steamdeck: controls,
         fan, display, firmware)
@@ -218,6 +235,10 @@
       programs = {
         steam = {
           enable = true;
+          # Jovian's pkgs.steam adds `-steamdeck -pipewire`. Gaming Mode
+          # (gamescope-session) uses pkgs.steam itself, so this changes
+          # only the desktop's Steam.
+          package = lib.mkIf (!cfg.desktopDeckClient) (pkgs.steam.override {platformArgs = "-pipewire";});
           # Steam Input sends X11 events; extest turns them into uinput so
           # a controller's desktop layout (stick/touchpad as mouse, buttons
           # as keys) also drives native Wayland (Plasma) windows.
