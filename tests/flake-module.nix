@@ -134,6 +134,7 @@
         assert expect (lib.sort lib.lessThan cfg.users.groups.gamers.members == ["alice" "gamer"]) "gamers group is not alice and gamer";
         assert expect (cfg.systemd.services.steam-library-mnt-games2.unitConfig.RequiresMountsFor == "/mnt/games2") "library service not tied to its mount";
         assert expect (lib.hasInfix "/srv/games/users/alice/steamapps/common" cfg.systemd.services.steam-library-srv-games.script) "alice has no common link";
+        assert expect (lib.hasInfix "ln -sfn /srv/games/shadercache /srv/games/users/alice/steamapps/shadercache" cfg.systemd.services.steam-library-srv-games.script) "alice's shader cache is not the shared one";
         assert expect (parent.hostSpec.system.jovian.enable && gaming.hostSpec.system.jovian.enable && !developer.hostSpec.system.jovian.enable) "jovian not on in default and gaming, off in developer";
         assert expect (parent.programs.steam.enable && !developer.programs.steam.enable) "Steam not on the default desktop, or still in developer";
         assert expect (!parent.jovian.steam.enable && !(parent.jovian.steam.autoStart or false)) "default entry boots into Gaming Mode";
