@@ -13,6 +13,7 @@ in {
   pi-coding-agent = stub "pi";
   kimi-code = stub "kimi";
   claude-code = stub "claude";
+  claude-desktop = stub "claude-desktop";
   artifacthub-mcp = stub "artifacthub-mcp";
   kubernetes-mcp-server = stub "kubernetes-mcp-server";
 }

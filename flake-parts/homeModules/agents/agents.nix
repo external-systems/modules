@@ -19,6 +19,9 @@
   #     appended after the preset (inputs.skills.lib.selections).
   #   homeSpec.agents.<agent>.enable  — install pi / kimi / claude /
   #     opencode and point the agent's skills dir at the shared tree.
+  #   homeSpec.agents.claude.desktop  — Claude Desktop next to claude
+  #     (on with it), Cowork's QEMU when the machine has KVM; the host
+  #     side (kvm group, vhost_vsock) is nixosModules.claude-desktop.
   #
   # Helpers live next to this file: _machine-context.nix (the
   # user-level instructions every agent gets) and _claude.nix (the
@@ -441,6 +444,38 @@
           default = null;
           description = "Override text for ~/.claude/CLAUDE.md (user-level memory); null = machineContext default.";
         };
+        # Claude Desktop (Chat, Code, Cowork). Its Code tab runs the same
+        # engine as the CLI and reads the ~/.claude files above; Chat
+        # gets the shared MCP servers through claude_desktop_config.json.
+        desktop = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = cfg.claude.enable && cfg.claude.installPackage;
+            defaultText = lib.literalExpression "homeSpec.agents.claude.enable && homeSpec.agents.claude.installPackage";
+            description = "Install the Claude Desktop app and sync the shared MCP servers into ~/.config/Claude/claude_desktop_config.json. On with claude-code, except where claude.installPackage is false (the OpenShell code-agent image).";
+          };
+          package = lib.mkOption {
+            type = lib.types.package;
+            default = pkgs.claude-desktop;
+            defaultText = lib.literalExpression "pkgs.claude-desktop";
+            description = "The Claude Desktop package (external-systems/pkgs overlays.llm-agents).";
+          };
+          cowork = {
+            # Read from the NixOS config; null in a standalone eval.
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = cfg.claude.desktop.enable && osConfig != null && (osConfig.hostSpec.hardware.kvm.enable or false);
+              defaultText = lib.literalExpression "homeSpec.agents.claude.desktop.enable && osConfig.hostSpec.hardware.kvm.enable";
+              description = "Cowork's local VM: QEMU in home.packages; nixosModules.claude-desktop adds the user to the kvm group and loads vhost_vsock. On when the machine supports KVM.";
+            };
+            qemuPackage = lib.mkOption {
+              type = lib.types.package;
+              default = pkgs.qemu_kvm;
+              defaultText = lib.literalExpression "pkgs.qemu_kvm";
+              description = "QEMU for Cowork's VM; the app finds qemu-system-* on PATH.";
+            };
+          };
+        };
       };
 
       # ---- opencode: homeSpec.agents.opencode.* ---- #
@@ -786,6 +821,26 @@
               ]}
             '';
           };
+        };
+      })
+
+      # ---- Claude Desktop ---- #
+      (lib.mkIf cfg.claude.desktop.enable {
+        home = {
+          packages =
+            [cfg.claude.desktop.package]
+            ++ lib.optional cfg.claude.desktop.cowork.enable cfg.claude.desktop.cowork.qemuPackage;
+          # claude_desktop_config.json is the app's mutable state too
+          # (it writes its preferences there), so the shared set is
+          # merged in at activation exactly like ~/.claude.json.
+          activation.claudeDesktopMcpServers = config.lib.dag.entryAfter ["writeBoundary"] ''
+            run ${lib.getExe claudeLib.mcpSync} ${lib.escapeShellArgs [
+              "${config.xdg.configHome}/Claude/claude_desktop_config.json"
+              "${config.xdg.stateHome}/home-manager/claude-desktop-mcp-servers.json"
+              (builtins.toJSON sharedMcpServersClaude)
+              (builtins.toJSON (lib.unique (claudeLib.knownServers ++ lib.attrNames sharedMcpCommands)))
+            ]}
+          '';
         };
       })
 

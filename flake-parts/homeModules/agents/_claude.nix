@@ -27,6 +27,8 @@
         echo "claude-mcp-sync: $claudeJson is a symlink, skipping" >&2
         exit 0
       fi
+      # Claude Desktop's ~/.config/Claude does not exist before its first launch.
+      mkdir -p "$(dirname "$claudeJson")"
       [ -f "$claudeJson" ] || echo '{}' > "$claudeJson"
 
       if [ -f "$stateFile" ]; then
