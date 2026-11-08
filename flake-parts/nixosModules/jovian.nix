@@ -201,6 +201,14 @@
           enable = true;
           autoStart = true;
           inherit (cfg) user desktopSession;
+          # programs.steam.extraCompatPackages (GE-Proton, and the tools
+          # steam-config-nix adds) reach Steam only through the wrapper
+          # around programs.steam.package. Gaming Mode starts Jovian's own
+          # pkgs.steam, so without this its Steam has no GE-Proton: games
+          # mapped to it cannot be installed, and Steam's update check
+          # deletes their Windows files.
+          environment.STEAM_EXTRA_COMPAT_TOOLS_PATHS =
+            lib.makeSearchPathOutput "steamcompattool" "" config.programs.steam.extraCompatPackages;
         };
       };
       services.orca.enable = false; # Disable screen reader
