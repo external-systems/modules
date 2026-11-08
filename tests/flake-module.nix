@@ -164,22 +164,26 @@
               self.nixosModules.amd
               self.nixosModules.bluetooth
               self.nixosModules.intel
+              self.nixosModules.kvm
               self.nixosModules.nvidia
               {
                 nixpkgs.hostPlatform = system;
-                hardware.facter.report.hardware.bluetooth = [{driver_modules = ["btusb"];}];
-                hardware.facter.report.hardware.graphics_card = [
-                  {
-                    vendor.value = 4318; # 0x10de NVIDIA
-                    device.value = nvidiaDevice;
-                    driver_modules = [];
-                  }
-                  {
-                    vendor.value = 32902; # 0x8086 Intel
-                    device.value = 39497;
-                    driver_modules = ["i915"];
-                  }
-                ];
+                hardware.facter.report.hardware = {
+                  bluetooth = [{driver_modules = ["btusb"];}];
+                  cpu = [{features = ["fpu" "svm"];}];
+                  graphics_card = [
+                    {
+                      vendor.value = 4318; # 0x10de NVIDIA
+                      device.value = nvidiaDevice;
+                      driver_modules = [];
+                    }
+                    {
+                      vendor.value = 32902; # 0x8086 Intel
+                      device.value = 39497;
+                      driver_modules = ["i915"];
+                    }
+                  ];
+                };
               }
               extra
             ];
@@ -187,12 +191,15 @@
         pascal = configOf 7042 {}; # 0x1b82 GTX 1070 Ti
         turing = configOf 7810 {}; # 0x1e82 RTX 2080
         optedOut = configOf 7042 {hostSpec.hardware.gpu.intel.enable = false;};
+        noVirt = configOf 7042 {hardware.facter.report.hardware.cpu = lib.mkForce [{features = ["fpu"];}];};
         expect = cond: msg: lib.assertMsg cond "hardware-from-facter: ${msg}";
       in
         assert expect pascal.hostSpec.hardware.gpu.nvidia.enable "NVIDIA card not detected";
         assert expect pascal.hostSpec.hardware.bluetooth.enable "Bluetooth not detected";
         assert expect pascal.hostSpec.hardware.gpu.intel.enable "Intel GPU not detected";
         assert expect (!pascal.hostSpec.hardware.gpu.amd.enable) "AMD on without an AMD card";
+        assert expect pascal.hostSpec.hardware.kvm.enable "KVM (svm) not detected";
+        assert expect (!noVirt.hostSpec.hardware.kvm.enable) "KVM on without svm or vmx";
         assert expect (!pascal.hardware.nvidia.open && pascal.hardware.nvidia.branch == "legacy_580") "Pascal not on the closed module and legacy_580";
         assert expect pascal.hardware.nvidia.powerManagement.enable "NVIDIA power management off";
         assert expect (turing.hardware.nvidia.open && turing.hardware.nvidia.branch == "stable") "Turing not on the open module and stable";
@@ -249,7 +256,7 @@
           pi = [".agents/skills" ".pi/agent/AGENTS.md" ".pi/agent/extensions/nix-workflow.ts" ".pi/agent/mcp.json" ".pi/agent/models.json"];
         };
         activations = {
-          claude = ["claudeMcpServers"];
+          claude = ["claudeDesktopMcpServers" "claudeMcpServers"];
           kimi = ["kimiNixWorkflow"];
           opencode = [];
           pi = [];
@@ -285,6 +292,48 @@
       in
         assert lib.all checkAlone names;
           pkgs.writeText "agents-independent" "ok";
+
+      # Claude Desktop follows claude-code, and Cowork follows the
+      # machine's KVM: QEMU for alice, the kvm group and vhost_vsock on
+      # the host. Without KVM there is no Cowork, without claude no app,
+      # and a standalone home-manager user (osConfig = null) gets no
+      # Cowork.
+      claude-desktop = let
+        with' = module: (machine.extendModules {modules = [module];}).config;
+        noKvm = with' {hostSpec.hardware.kvm.enable = lib.mkForce false;};
+        noClaude = with' {home-manager.users.alice.homeSpec.agents.claude.enable = lib.mkForce false;};
+        names = c: map lib.getName c.home-manager.users.alice.home.packages;
+        # pkgs.qemu_kvm is named qemu-host-cpu-only.
+        hasQemu = c: lib.any (lib.hasPrefix "qemu") (names c);
+        desktop = c: c.home-manager.users.alice.homeSpec.agents.claude.desktop;
+        hostSide = c: lib.elem "vhost_vsock" c.boot.kernelModules || lib.elem "kvm" c.users.users.alice.extraGroups;
+        standalone = inputs.home-manager.lib.homeManagerConfiguration {
+          pkgs = pkgs.extend (import ./fixtures/overlay.nix);
+          extraSpecialArgs.osConfig = null;
+          modules = [
+            self.homeModules.agents
+            {
+              home = {
+                username = "alice";
+                homeDirectory = "/home/alice";
+                stateVersion = "26.11";
+              };
+              homeSpec.agents.claude.enable = true;
+            }
+          ];
+        };
+        hm = machine.config.home-manager.users.alice;
+        expect = cond: msg: lib.assertMsg cond "claude-desktop: ${msg}";
+      in
+        assert expect (lib.elem "claude-desktop" (names machine.config) && hasQemu machine.config) "Claude Desktop or QEMU not installed";
+        assert expect (lib.hasInfix "/Claude/claude_desktop_config.json" hm.home.activation.claudeDesktopMcpServers.data) "no claude_desktop_config.json MCP sync";
+        assert expect (lib.elem "vhost_vsock" machine.config.boot.kernelModules) "vhost_vsock not loaded";
+        assert expect (lib.elem "kvm" machine.config.users.users.alice.extraGroups) "alice not in the kvm group";
+        assert expect ((desktop noKvm).enable && !(desktop noKvm).cowork.enable) "Cowork on without KVM";
+        assert expect (!(hasQemu noKvm) && !(hostSide noKvm)) "QEMU, kvm group or vhost_vsock without KVM";
+        assert expect (!(desktop noClaude).enable && !(lib.elem "claude-desktop" (names noClaude)) && !(hostSide noClaude)) "Claude Desktop without claude";
+        assert expect (standalone.config.homeSpec.agents.claude.desktop.enable && !standalone.config.homeSpec.agents.claude.desktop.cowork.enable) "standalone user: no desktop, or Cowork without a host";
+          pkgs.writeText "claude-desktop" "ok";
 
       # The machine context rendered from a synthetic NixOS config: the
       # hardware from an inline facter report, local KVM and a remote

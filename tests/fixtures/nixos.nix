@@ -39,6 +39,7 @@
         intel.enable = true;
         nvidia.enable = true;
       };
+      kvm.enable = true;
       sound.enable = true;
     };
     networking = {
