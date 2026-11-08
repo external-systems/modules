@@ -12,8 +12,10 @@
 # shared (https://github.com/ValveSoftware/Proton/issues/4820):
 #
 #   <path>/common/                    root:<group> 2775 + default ACL
+#   <path>/shadercache/               root:<group> 2775 (shaderCache)
 #   <path>/users/<user>/steamapps/    <user> 0700 (manifests, compatdata,
-#     common -> <path>/common          shadercache, downloading)
+#     common -> <path>/common          downloading)
+#     shadercache -> <path>/shadercache
 #
 # steam-library-register@<user> adds <path>/users/<user> to each user's
 # Steam as a library, and by default makes the first one where new games
@@ -28,7 +30,7 @@
 # user's group (users) and mode (no group write) and miss the folder's
 # default ACL. Another user's Steam can then read the game but not update
 # or verify it ("missing file privileges"). steam-library-share@<user>
-# hands that user's files in common/ to the group with group write, as
+# hands that user's files in common/ and shadercache/ to the group with group write, as
 # the user (an owner may chgrp to a group it is in): at boot, on every
 # deploy, and every few minutes from a timer. It never follows symlinks
 # and never touches another user's files.
@@ -63,8 +65,7 @@
 
     shareScript = ''
       user=$(id -un)
-      for root in ${lib.escapeShellArgs libs.paths}; do
-        common="$root/common"
+      for common in ${lib.escapeShellArgs (lib.concatMap (path: ["${path}/common"] ++ lib.optional libs.shaderCache "${path}/shadercache") libs.paths)}; do
         [ -d "$common" ] || continue
         # A file Steam is moving can vanish between find and the change:
         # report and carry on, the next run gets the rest.
@@ -88,6 +89,10 @@
       # group on new directories. Never setgid files: the Steam Linux
       # Runtime refuses setgid executables.
       setfacl -m g:${libs.group}:rwx,d:g:${libs.group}:rwx ${lib.escapeShellArg "${path}/common"}
+      ${lib.optionalString libs.shaderCache ''
+        install -d -m 2775 -o root -g ${libs.group} ${lib.escapeShellArg "${path}/shadercache"}
+        setfacl -m g:${libs.group}:rwx,d:g:${libs.group}:rwx ${lib.escapeShellArg "${path}/shadercache"}
+      ''}
       ${lib.concatMapStrings (user: let
           home = "${path}/users/${user}";
         in ''
@@ -98,8 +103,49 @@
             ln -sfn ${lib.escapeShellArg "${path}/common"} ${lib.escapeShellArg "${home}/steamapps/common"}
             chown -h ${user}:${groupOf user} ${lib.escapeShellArg "${home}/steamapps/common"}
           fi
+          ${lib.optionalString libs.shaderCache (shaderCacheScript path user)}
         '')
         libs.users}
+    '';
+
+    # One Vulkan/DXVK/Mesa shader cache per game for everyone: the same
+    # GPU and Mesa build compile the same shaders. A user's own caches
+    # move into the shared one; of two caches for one game the bigger,
+    # more complete one stays (it is only a cache). Never while that
+    # user's Steam runs.
+    shaderCacheScript = path: user: let
+      shared = lib.escapeShellArg "${path}/shadercache";
+      own = lib.escapeShellArg "${path}/users/${user}/steamapps/shadercache";
+    in ''
+      if [ -d ${own} ] && [ ! -L ${own} ]; then
+        if pgrep -u ${user} -x steam >/dev/null; then
+          echo "${user}'s Steam is running: its shader cache moves into ${path}/shadercache at the next boot" >&2
+        else
+          for cache in ${own}/* ${own}/.[!.]*; do
+            [ -e "$cache" ] || [ -L "$cache" ] || continue
+            name=$(basename "$cache")
+            if [ -e ${shared}/"$name" ] || [ -L ${shared}/"$name" ]; then
+              # Two caches of one game: keep the bigger, more complete one.
+              if [ "$(du -sb -- "$cache" | cut -f1)" -gt "$(du -sb -- ${shared}/"$name" | cut -f1)" ]; then
+                rm -rf -- ${shared}/"$name"
+                mv -T -- "$cache" ${shared}/"$name"
+                echo "${user}: shader cache $name replaces a smaller shared one" >&2
+              else
+                rm -rf -- "$cache"
+                echo "${user}: ${path}/shadercache/$name is as big, dropping ${user}'s copy" >&2
+              fi
+            else
+              mv -T -- "$cache" ${shared}/"$name"
+              echo "${user}: shader cache $name moved into ${path}/shadercache" >&2
+            fi
+          done
+          rmdir ${own}
+        fi
+      fi
+      if [ ! -e ${own} ] || [ -L ${own} ]; then
+        ln -sfn ${shared} ${own}
+        chown -h ${user}:${groupOf user} ${own}
+      fi
     '';
   in {
     options.hostSpec.system.gaming = {
@@ -175,6 +221,18 @@
           default = "gamers";
           example = "games";
           description = "Group that owns and may write the shared game files.";
+        };
+        shaderCache = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          example = false;
+          description = ''
+            Share each game's shader cache (Steam's Vulkan pre-compiled
+            shaders, Mesa, DXVK, VKD3D) between the users too, in
+            <path>/shadercache, so a game's shaders compile once for
+            everyone. Users' existing caches move in at the next boot.
+            Deleting a game's shader cache in Steam deletes it for all.
+          '';
         };
         makeDefault = lib.mkOption {
           type = lib.types.bool;
@@ -263,8 +321,10 @@
               lib.nameValuePair (lib.removeSuffix ".service" (libraryUnit path)) {
                 description = "Shared Steam library at ${path}";
                 wantedBy = ["multi-user.target"];
+                # Moves shader caches: done before Gaming Mode's Steam starts.
+                before = ["display-manager.service"];
                 unitConfig.RequiresMountsFor = path;
-                path = [pkgs.acl pkgs.coreutils];
+                path = [pkgs.acl pkgs.coreutils pkgs.procps];
                 serviceConfig = {
                   Type = "oneshot";
                   RemainAfterExit = true;

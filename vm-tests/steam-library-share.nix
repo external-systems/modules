@@ -6,7 +6,14 @@
 # Each user's run fixes only that user's files and never follows a
 # symlink out of common/.
 _: {
-  nodes.machine = {
+  nodes.machine = {pkgs, ...}: {
+    # A process named "steam", as the shader-cache move checks for.
+    environment.systemPackages = [
+      (pkgs.runCommand "fake-steam" {} ''
+        mkdir -p $out/bin
+        cp -L ${pkgs.python3}/bin/python3 $out/bin/steam
+      '')
+    ];
     hostSpec.system.gaming.sharedLibraries = {
       enable = true;
       paths = ["/srv/games"];
@@ -67,5 +74,43 @@ _: {
         machine.succeed("systemctl start steam-library-share@bob.service")
         assert stat(f"{common}/Other/sub/bob.dat") == "bob gamers -rw-rw-r--", stat(f"{common}/Other/sub/bob.dat")
         machine.succeed(f"su alice -c 'echo more >> {common}/Other/sub/bob.dat'")
+
+    shared = "/srv/games/shadercache"
+
+    def own(user):
+        return f"/srv/games/users/{user}/steamapps/shadercache"
+
+    with subtest("every user's shader cache is the shared one"):
+        for user in ["alice", "bob"]:
+            assert machine.succeed(f"readlink {own(user)}").strip() == shared
+        assert stat(shared).startswith("root gamers drwxrws"), stat(shared)
+
+    with subtest("a user's own caches move into the shared one at the next run"):
+        # bob compiled games 222 (fully) and 444 (barely) already; alice
+        # has private caches for 111 (new), 222 (a smaller duplicate)
+        # and 444 (a bigger one), as before this module.
+        as_user("bob", f"mkdir -p {shared}/222 {shared}/444 && head -c 4096 /dev/zero > {shared}/222/cache && echo bob > {shared}/444/cache")
+        as_user("alice", f"rm {own('alice')} && mkdir -p {own('alice')}/111 {own('alice')}/222 {own('alice')}/444 && echo a > {own('alice')}/111/cache && echo dup > {own('alice')}/222/cache && head -c 8192 /dev/zero > {own('alice')}/444/cache && echo h > {own('alice')}/.hidden")
+        machine.succeed("systemctl restart steam-library-srv-games.service")
+        assert machine.succeed(f"readlink {own('alice')}").strip() == shared
+        assert machine.succeed(f"cat {shared}/111/cache").strip() == "a"
+        assert machine.succeed(f"stat -c %s {shared}/222/cache").strip() == "4096"
+        assert machine.succeed(f"stat -c %s {shared}/444/cache").strip() == "8192"
+        machine.succeed(f"test -e {shared}/.hidden")
+
+    with subtest("not while that user's Steam runs"):
+        as_user("bob", f"rm {own('bob')} && mkdir -p {own('bob')}/333")
+        machine.succeed("systemd-run --uid=bob --unit=fake-steam steam -c 'import time; time.sleep(600)'")
+        machine.wait_until_succeeds("pgrep -u bob -x steam", timeout=30)
+        machine.succeed("systemctl restart steam-library-srv-games.service")
+        machine.succeed(f"test -d {own('bob')}/333 && test ! -L {own('bob')}")
+        machine.succeed("systemctl stop fake-steam")
+        machine.succeed("systemctl restart steam-library-srv-games.service")
+        machine.succeed(f"test -d {shared}/333 && test -L {own('bob')}")
+
+    with subtest("shared caches stay writable for everyone"):
+        machine.succeed("systemctl start steam-library-share@alice.service steam-library-share@bob.service")
+        machine.succeed(f"su bob -c 'echo more >> {shared}/111/cache'")
+        machine.succeed(f"su alice -c 'echo more >> {shared}/333/../222/cache'")
   '';
 }
