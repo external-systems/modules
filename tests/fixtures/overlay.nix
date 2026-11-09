@@ -9,7 +9,7 @@ in {
   openshell-driver-vm = stub "openshell-driver-vm";
   code-sandbox = stub "code-sandbox";
   devenv = stub "devenv";
-  headroom-sandbox = stub "headroom";
+  headroom-lean = stub "headroom";
   pi-coding-agent = stub "pi";
   kimi-code = stub "kimi";
   claude-code = stub "claude";

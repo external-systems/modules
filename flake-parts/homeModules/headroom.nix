@@ -11,9 +11,9 @@
       enable = lib.mkEnableOption "headroom context compression layer";
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.headroom-sandbox;
-        defaultText = lib.literalExpression "pkgs.headroom-sandbox";
-        description = "The headroom package to install.";
+        default = pkgs.headroom-lean;
+        defaultText = lib.literalExpression "pkgs.headroom-lean";
+        description = "The headroom package to install. The default is upstream's torch-free `lean` profile; `pkgs.headroom` is the full `all` profile, which proxy.memory and proxy.learn need (sentence-transformers, torch).";
       };
       proxy = {
         enable = lib.mkOption {
