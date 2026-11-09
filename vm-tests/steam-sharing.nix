@@ -60,8 +60,11 @@ _: {
         machine.succeed("install -d -m 0755 /mnt/steam/users")
         for user in ["alice", "bob"]:
             machine.succeed(f"install -d -o {user} -g users {lib(user)} {lib(user)}/steamapps")
-            as_user(user, "mkdir -p ~/.local/share/Steam/config")
-            as_user(user, f"printf '\"libraryfolders\"\\n{{\\n\\t\"0\"\\n\\t{{\\n\\t\\t\"path\"\\t\\t\"/home/{user}/.local/share/Steam\"\\n\\t}}\\n\\t\"1\"\\n\\t{{\\n\\t\\t\"path\"\\t\\t\"{lib(user)}\"\\n\\t}}\\n}}\\n' > ~/.local/share/Steam/config/libraryfolders.vdf")
+            # The Steam folder in the user's home is on the same btrfs
+            # filesystem as the game library, as on kamrui-h1.
+            machine.succeed(f"install -d -o {user} -g users /mnt/steam/home-{user} /mnt/steam/home-{user}/steamapps")
+            as_user(user, f"mkdir -p ~/.local/share && ln -s /mnt/steam/home-{user} ~/.local/share/Steam && mkdir -p ~/.local/share/Steam/config")
+            as_user(user, f"printf '\"libraryfolders\"\\n{{\\n\\t\"0\"\\n\\t{{\\n\\t\\t\"path\"\\t\\t\"/mnt/steam/home-{user}\"\\n\\t}}\\n\\t\"1\"\\n\\t{{\\n\\t\\t\"path\"\\t\\t\"{lib(user)}\"\\n\\t}}\\n}}\\n' > ~/.local/share/Steam/config/libraryfolders.vdf")
         # alice installed game 100 and compiled its shaders.
         manifest("alice", 100, "Game")
         as_user("alice", f"mkdir -p {lib('alice')}/steamapps/common/Game {lib('alice')}/steamapps/shadercache/100")
@@ -77,6 +80,9 @@ _: {
     with subtest("steam-copy-game gives bob his own reflink copy"):
         machine.succeed("steam-copy-game --from alice --to bob 100")
         game = f"{lib('bob')}/steamapps/common/Game/game.bin"
+        # bob had no record of the game: his game library, not the Steam
+        # folder in his home.
+        machine.fail("test -e /mnt/steam/home-bob/steamapps/common/Game")
         machine.succeed(f"cmp {lib('alice')}/steamapps/common/Game/game.bin {game}")
         for path in [game, f"{lib('bob')}/steamapps/common/Game", f"{lib('bob')}/steamapps/shadercache/100/cache", f"{lib('bob')}/steamapps/appmanifest_100.acf"]:
             assert owner(path) == "bob", (path, owner(path))
@@ -89,6 +95,20 @@ _: {
         machine.fail("steam-copy-game --from alice --to bob 100")
         machine.succeed("steam-copy-game --from alice --to bob --force 100")
         assert owner(game) == "bob"
+
+    with subtest("the copy goes where the receiver's install record is"):
+        # bob's record of game 500 is in the Steam folder in his home.
+        manifest("alice", 500, "Fifth")
+        as_user("alice", f"mkdir -p {lib('alice')}/steamapps/common/Fifth && echo five > {lib('alice')}/steamapps/common/Fifth/f")
+        machine.succeed(f"cp {lib('alice')}/steamapps/appmanifest_500.acf /mnt/steam/home-bob/steamapps/ && chown bob:users /mnt/steam/home-bob/steamapps/appmanifest_500.acf")
+        machine.succeed("steam-copy-game --from alice --to bob 500")
+        machine.succeed("test -f /mnt/steam/home-bob/steamapps/common/Fifth/f")
+        machine.fail(f"test -e {lib('bob')}/steamapps/common/Fifth")
+        machine.fail(f"test -e {lib('bob')}/steamapps/appmanifest_500.acf")
+        # Records in two libraries: refused.
+        machine.succeed(f"cp -p /mnt/steam/home-bob/steamapps/appmanifest_500.acf {lib('bob')}/steamapps/")
+        machine.fail("steam-copy-game --from alice --to bob --force 500")
+        machine.succeed(f"rm {lib('bob')}/steamapps/appmanifest_500.acf")
 
     with subtest("steam-copy-game never writes through a link"):
         as_user("bob", f"mv {lib('bob')}/steamapps/common {lib('bob')}/steamapps/common.real && ln -s /etc {lib('bob')}/steamapps/common")

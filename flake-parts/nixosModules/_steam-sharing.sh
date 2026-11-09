@@ -98,13 +98,32 @@ copy_game() {
   [ -d "$src/steamapps/common/$installdir" ] ||
     die "$src/steamapps/common/$installdir is missing"
 
-  local dest=""
+  # Where the copy goes: the library that already has the receiver's
+  # install record of the game (one record per game, or Steam sees it
+  # twice); else a game library the receiver added, before the Steam
+  # folder in their home. Always on the source's filesystem (reflink).
+  local -a records=() added=() home=()
+  local first=1
   while IFS= read -r lib; do
-    if owned_dir "$to" "$lib/steamapps" && [ "$(device "$lib")" = "$(device "$src")" ]; then
-      dest=$lib
-      break
+    if [ -f "$lib/steamapps/appmanifest_$appid.acf" ]; then
+      records+=("$lib")
+    elif owned_dir "$to" "$lib/steamapps" && [ "$(device "$lib")" = "$(device "$src")" ]; then
+      if [ $first = 1 ]; then home+=("$lib"); else added+=("$lib"); fi
     fi
+    first=0
   done < <(libraries "$to")
+  local dest=""
+  if [ ${#records[@]} -gt 1 ]; then
+    die "$to has install records of $appid in several libraries (${records[*]}): remove all but one"
+  elif [ ${#records[@]} = 1 ]; then
+    dest=${records[0]}
+    owned_dir "$to" "$dest/steamapps" && [ "$(device "$dest")" = "$(device "$src")" ] ||
+      die "$to's record of $appid is in $dest, not a library $to owns on the filesystem of $src"
+  elif [ ${#added[@]} -gt 0 ]; then
+    dest=${added[0]}
+  elif [ ${#home[@]} -gt 0 ]; then
+    dest=${home[0]}
+  fi
   [ -n "$dest" ] || die "$to has no Steam library on the same filesystem as $src (has $to run Steam?)"
 
   local d
