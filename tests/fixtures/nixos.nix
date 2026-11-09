@@ -70,13 +70,15 @@
     system = {
       developerSpecialisation.enable = true;
       # Gaming Mode logs in as the dedicated user (gaming.user), which
-      # is declared because of it; alice and gamer share the libraries.
+      # is declared because of it; alice and gamer share games and
+      # shader caches by reflink copies.
       gaming = {
-        sharedLibraries = {
-          enable = true;
-          paths = ["/srv/games" "/mnt/games2"];
-        };
+        steamSharing.enable = true;
         steamConfig.enable = true;
+      };
+      btrfsDedup = {
+        enable = true;
+        filesystems.root.spec = "LABEL=root";
       };
       jovian = {
         enable = true;
