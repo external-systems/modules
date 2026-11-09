@@ -408,7 +408,7 @@
 
       languages = {
         nix = {
-          enable = language "Nix: Nix IDE with the nixd language server, alejandra formatting on save";
+          enable = language "Nix: Nix IDE with the nixd language server, alejandra formatting on save; nixd, alejandra, statix, deadnix and nixfmt-rs on PATH";
           flake = lib.mkOption {
             type = with lib.types; nullOr str;
             default = null;
@@ -479,9 +479,14 @@
 
     config = lib.mkIf (cfg.enable && config.home.username != "root") {
       home.packages =
+        # The nix toolchain on PATH too, for the terminal and agents:
+        # the language server, the formatter and the linters treefmt runs.
         lib.optionals languages.nix.enable [
           pkgs.alejandra
+          pkgs.deadnix
           pkgs.nixd
+          pkgs.nixfmt-rs
+          pkgs.statix
         ]
         ++ lib.optional (font.package != null) font.package;
       fonts.fontconfig.enable = lib.mkIf (font.package != null) true;
