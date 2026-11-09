@@ -12,7 +12,7 @@ in {
   flake = {
     # ------ NixOS Modules ------ #
     # Consumers provide pkgs: these modules read the repo-built packages
-    # (pkgs.openshell*, pkgs.code-sandbox, pkgs.devenv, pkgs.headroom-sandbox,
+    # (pkgs.openshell*, pkgs.code-sandbox, pkgs.devenv, pkgs.headroom-lean,
     # ...) from the consumer's overlay, so the overlay is applied by the
     # consuming flake, not here. Package choice (stable vs unstable) is the
     # consumer's: override the package options instead.
