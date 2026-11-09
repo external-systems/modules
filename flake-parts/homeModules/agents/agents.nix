@@ -801,9 +801,11 @@
           ];
           # Route claude-code provider traffic through the headroom proxy
           # (documented ANTHROPIC_BASE_URL flow; the proxy systemd user
-          # service holds Restart=always).
+          # service holds Restart=always). The proxy root, not /v1: claude
+          # appends /v1/messages itself, and /v1/v1/messages is a 404 from
+          # api.anthropic.com.
           sessionVariables = lib.mkIf headroomRouteProviders {
-            ANTHROPIC_BASE_URL = headroomProxyUrl;
+            ANTHROPIC_BASE_URL = headroomProxyRoot;
           };
           # ~/.claude.json is claude's mutable state file, so the shared
           # set is synced in at activation (claudeLib.mcpSync), which

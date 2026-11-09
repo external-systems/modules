@@ -225,7 +225,8 @@
       # What homeModules.agents writes for alice: claude's settings carry
       # the Nix workflow and the skills runtime env but no (ignored)
       # mcpServers, the github pat server is local everywhere, pi's
-      # models.json carries the headroom reroute, and every agent gets
+      # models.json carries the headroom reroute, claude's ANTHROPIC_BASE_URL is
+      # the proxy root, and every agent gets
       # the same machine context.
       agents-wiring = let
         hm = machine.config.home-manager.users.alice;
@@ -249,6 +250,7 @@
         assert expect (hm.programs.opencode.settings.mcp.servers.github.type == "local") "opencode github not on the pat server";
         assert expect ((json ".kimi-code/mcp.json").mcpServers ? github) "kimi has no github server";
         assert expect ((json ".pi/agent/models.json").providers.kimi-coding.headers ? x-headroom-base-url) "pi models.json lacks the headroom reroute";
+        assert expect (hm.home.sessionVariables.ANTHROPIC_BASE_URL == "http://127.0.0.1:8787") "claude not routed to the headroom proxy root (claude appends /v1 itself)";
         assert expect (lib.hasPrefix "Machine: eval (NixOS " context) "no Machine line";
         assert expect (lib.hasInfix "Repo: github.com/example/home (local: /home/alice/home)" context) "no Repo line";
         assert expect (lib.all (f: files.${f}.text == context) [".pi/agent/AGENTS.md" ".kimi-code/AGENTS.md"]) "agents disagree on the machine context";
