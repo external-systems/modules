@@ -9,7 +9,9 @@
 # - "developer" specialisation (developer-specialisation.nix): jovian
 #   off, so the machine's normal kernel and no Steam.
 #
-# `defaultEntry` picks which of desktop and gaming is the machine's
+# `gamingEntry = false` drops the gaming entry: the desktop and developer
+# entries only, one Steam client and no Gaming Mode (a desktop several
+# people use). `defaultEntry` picks which of desktop and gaming is the machine's
 # default boot entry; the other one becomes a specialisation named after
 # it ("gaming" or "desktop"). A Steam Deck sets defaultEntry = "gaming".
 #
@@ -52,6 +54,17 @@
           Deck).
         '';
       };
+      gamingEntry = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        example = false;
+        description = ''
+          Whether the machine has the gaming entry. false leaves the
+          desktop entry (jovian, Steam on the KDE desktop) and the
+          developer entry: one Steam client and no Gaming Mode, for a
+          desktop several people use. Needs defaultEntry = "desktop".
+        '';
+      };
       configuration = lib.mkOption {
         type = lib.types.deferredModule;
         default = {};
@@ -83,6 +96,10 @@
     config = lib.mkIf cfg.enable {
       assertions = [
         {
+          assertion = cfg.gamingEntry || !gamingDefault;
+          message = "hostSpec.system.gamingSpecialisation.gamingEntry = false needs defaultEntry = \"desktop\": the default entry is the gaming entry.";
+        }
+        {
           assertion = gamingDefault -> options.hostSpec.system.gamingSpecialisation.configuration.highestPrio >= 1500;
           message = ''
             hostSpec.system.gamingSpecialisation.configuration only applies
@@ -91,9 +108,11 @@
           '';
         }
       ];
-      specialisation.${other}.configuration = {
-        imports = lib.optional (!gamingDefault) cfg.configuration;
-        hostSpec.system.gamingSpecialisation.alternate = true;
+      specialisation.${other} = lib.mkIf (cfg.gamingEntry || gamingDefault) {
+        configuration = {
+          imports = lib.optional (!gamingDefault) cfg.configuration;
+          hostSpec.system.gamingSpecialisation.alternate = true;
+        };
       };
       hostSpec.system = {
         gamingSpecialisation.active = !developer && (gamingDefault != cfg.alternate);

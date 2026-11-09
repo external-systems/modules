@@ -102,10 +102,7 @@
                   };
                   jovian.gamingMode = true;
                   gaming = {
-                    sharedLibraries = {
-                      enable = true;
-                      paths = ["/mnt/steam"];
-                    };
+                    steamSharing.enable = true;
                     steamConfig.enable = true;
                   };
                 };
@@ -118,6 +115,14 @@
         # specialisation; there the gaming hook is refused.
         deckWith = extra: (entryWith ({hostSpec.system.gamingSpecialisation.defaultEntry = "gaming";} // extra)).config;
         deck = deckWith {};
+        # kamrui-h1: a desktop for two people, no gaming entry.
+        desk =
+          (entryWith {
+            hostSpec.system = {
+              gamingSpecialisation.gamingEntry = false;
+              jovian.gamingMode = lib.mkForce false;
+            };
+          }).config;
         deskEntry = deck.specialisation.desktop.configuration;
         failed = c: map (a: a.message) (lib.filter (a: !a.assertion) c.assertions);
         parent = entry.config;
@@ -131,10 +136,6 @@
         assert expect (!(lib.elem "wheel" gamer.extraGroups) && gamer.openssh.authorizedKeys.keys == []) "gamer has wheel or SSH keys";
         assert expect (cfg.services.displayManager.sddm.settings.Users.HideUsers == "gamer") "gamer not hidden from SDDM";
         assert expect (cfg.jovian.steam.user == "gamer") "Gaming Mode does not log in as gamer";
-        assert expect (lib.sort lib.lessThan cfg.users.groups.gamers.members == ["alice" "gamer"]) "gamers group is not alice and gamer";
-        assert expect (cfg.systemd.services.steam-library-mnt-games2.unitConfig.RequiresMountsFor == "/mnt/games2") "library service not tied to its mount";
-        assert expect (lib.hasInfix "/srv/games/users/alice/steamapps/common" cfg.systemd.services.steam-library-srv-games.script) "alice has no common link";
-        assert expect (lib.hasInfix "ln -sfn /srv/games/shadercache /srv/games/users/alice/steamapps/shadercache" cfg.systemd.services.steam-library-srv-games.script) "alice's shader cache is not the shared one";
         assert expect (parent.hostSpec.system.jovian.enable && gaming.hostSpec.system.jovian.enable && !developer.hostSpec.system.jovian.enable) "jovian not on in default and gaming, off in developer";
         assert expect (parent.programs.steam.enable && !developer.programs.steam.enable) "Steam not on the default desktop, or still in developer";
         assert expect (!parent.jovian.steam.enable && !(parent.jovian.steam.autoStart or false)) "default entry boots into Gaming Mode";
@@ -153,12 +154,14 @@
         assert expect (lib.all (e: e.programs.steam.config.enable && lib.getName e.programs.steam.config.defaultCompatTool == lib.getName pkgs.proton-ge-bin) [parent gaming]) "GE-Proton is not Steam's default in the default and gaming entries";
         assert expect (lib.all (u: lib.elem "steam-config-patcher@${u}.service" gaming.systemd.targets.multi-user.wants) ["alice" "gamer"]) "steam-config patcher not run for alice and gamer";
         assert expect (parent.systemd.services."steam-config-patcher@".serviceConfig ? ExecCondition) "steam-config patcher fails instead of skipping users without Steam";
-        assert expect (lib.all (e: lib.all (u: lib.elem "steam-library-register@${u}.service" e.systemd.targets.multi-user.wants) ["alice" "gamer"]) [parent gaming developer]) "shared libraries not registered for alice and gamer in every entry";
-        assert expect (let
-          register = parent.systemd.services."steam-library-register@";
-        in
-          lib.hasSuffix "--make-default /mnt/steam" register.serviceConfig.ExecStart
-          && lib.elem "steam-library-mnt-steam.service" register.after) "library registration not default, or not after its library service";
+        # Sharing below Steam: shader caches synced at boot for alice and
+        # gamer in every entry, steam-copy-game installed.
+        assert expect (lib.all (e: lib.hasSuffix "alice gamer" e.systemd.services.steam-shader-sync.serviceConfig.ExecStart && lib.elem "display-manager.service" e.systemd.services.steam-shader-sync.before) [parent gaming developer]) "shader caches not synced for alice and gamer before the display manager";
+        assert expect (lib.any (p: lib.getName p == "steam-copy-game") parent.environment.systemPackages) "steam-copy-game not installed";
+        # gamingEntry = false: the desktop and developer entries only, no
+        # Gaming Mode and so no gamer; a gaming default refuses it.
+        assert expect (!(desk.specialisation ? gaming) && desk.specialisation ? developer && !(desk.users.users ? gamer) && desk.programs.steam.enable && !desk.hostSpec.system.jovian.desktopDeckClient && failed desk == []) "gamingEntry = false is not desktop + developer without Gaming Mode";
+        assert expect (failed (deckWith {imports = [{hostSpec.system.gamingSpecialisation.gamingEntry = false;}];}) != []) "gamingEntry = false accepted with defaultEntry = gaming";
         # The Deck client (-steamdeck) disables the Store on the desktop:
         # the regular client there, the Deck client in the Gaming Mode
         # entry (also its Switch to Desktop), on a Deck's default entry too.
