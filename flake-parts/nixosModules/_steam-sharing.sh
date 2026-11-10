@@ -62,6 +62,34 @@ place_copy() {
   rmdir -- "$tmp"
 }
 
+# Steam's record of a game's shader cache (config.vdf) follows a copy of
+# the cache from user $2 to user $1 (_steam-shader-record.py says why).
+# Only into a Steam that has run (config.vdf exists) and only while it
+# is closed: Steam rewrites config.vdf when it exits.
+copy_shader_record() {
+  local to=$1 from=$2 appid=$3 src dir dst tmp mode
+  src=$(steam_root "$from") && dir=$(steam_root "$to") || return 0
+  src="$src/config/config.vdf"
+  dir="$dir/config"
+  dst="$dir/config.vdf"
+  [ -f "$src" ] && [ ! -L "$src" ] && [ -f "$dst" ] && [ ! -L "$dst" ] || return 0
+  owned_dir "$to" "$dir" && [ "$(stat -c %U -- "$dst")" = "$to" ] || {
+    log "$dir is not $to's: Steam's record of shader cache $appid not copied"
+    return 0
+  }
+  mode=$(stat -c %a -- "$dst")
+  tmp=$(mktemp "$dir/.steam-sharing.XXXXXX")
+  steam-shader-record "$src" "$dst" "$appid" >"$tmp" || {
+    rm -f -- "$tmp"
+    log "could not copy Steam's record of shader cache $appid to $to"
+    return 0
+  }
+  chown --no-dereference "$to:$(id -gn "$to")" "$tmp"
+  chmod "$mode" "$tmp"
+  mv -T -- "$tmp" "$dst"
+  log "copied Steam's record of shader cache $appid; $to's Steam does not process it again"
+}
+
 # steam-copy-game --from <user> --to <user> [--force] <appid>
 copy_game() {
   local from="" to="" force=0 appid=""
@@ -145,6 +173,7 @@ copy_game() {
   if [ -d "$src/steamapps/shadercache/$appid" ] && [ ! -L "$src/steamapps/shadercache/$appid" ]; then
     place_copy "$to" "$src/steamapps/shadercache/$appid" "$dest/steamapps/shadercache/$appid"
     log "copied shader cache $appid"
+    copy_shader_record "$to" "$from" "$appid"
   fi
 
   local record="$dest/steamapps/appmanifest_$appid.acf"
@@ -206,6 +235,7 @@ sync_shaders() {
         fi
         place_copy "$user" "${path[$appid]}" "$cache"
         log "shader cache $appid: ${owner[$appid]}'s copy to $user"
+        copy_shader_record "$user" "${owner[$appid]}" "$appid"
         break
       done < <(libraries "$user")
     done

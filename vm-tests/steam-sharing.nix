@@ -30,6 +30,7 @@ _: {
   };
 
   testScript = ''
+    import re
     import shlex
 
     def lib(user):
@@ -50,6 +51,26 @@ _: {
 
     def steam_quit(user):
         machine.succeed(f"systemctl stop fake-steam-{user}")
+
+    def steam_config(user, queue, manifests):
+        # Steam's own config.vdf: the record of its shader caches.
+        entries = "".join(f'\t\t\t\t\t\t"{appid}"\t\t"{m}"\n' for appid, m in manifests.items())
+        text = (
+            '"InstallConfigStore"\n{\n\t"Software"\n\t{\n\t\t"Valve"\n\t\t{\n\t\t\t"Steam"\n\t\t\t{\n'
+            '\t\t\t\t"AutoUpdateWindowEnabled"\t\t"0"\n'
+            '\t\t\t\t"ShaderCacheManager"\n\t\t\t\t{\n'
+            f'\t\t\t\t\t"ProcessingQueue"\t\t"{queue}"\n'
+            f'\t\t\t\t\t"CommittedDepotManifests"\n\t\t\t\t\t{{\n{entries}\t\t\t\t\t}}\n'
+            '\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n'
+        )
+        path = f"/mnt/steam/home-{user}/config/config.vdf"
+        machine.succeed(f"printf %s {shlex.quote(text)} > {path} && chown {user}:users {path} && chmod 600 {path}")
+
+    def record(user):
+        return machine.succeed(f"cat /mnt/steam/home-{user}/config/config.vdf")
+
+    def has(text, key, value):
+        return re.search(rf'"{key}"\s+"{re.escape(value)}"', text) is not None
 
     def manifest(user, appid, installdir):
         as_user(user, f"printf '\"AppState\"\\n{{\\n\\t\"appid\"\\t\\t\"{appid}\"\\n\\t\"installdir\"\\t\\t\"{installdir}\"\\n}}\\n' > {lib(user)}/steamapps/appmanifest_{appid}.acf")
@@ -96,6 +117,25 @@ _: {
         machine.succeed("steam-copy-game --from alice --to bob --force 100")
         assert owner(game) == "bob"
 
+    with subtest("Steam's record of the shader cache follows the copy"):
+        # alice's Steam downloaded and processed game 100's cache; bob's
+        # still has 100 queued for processing (a replay of every pipeline).
+        steam_config("alice", "", {"100": "1_2_3_alice-depots"})
+        steam_config("bob", "100;200;", {"100": "1_2_3_old", "200": "4_5_6_bob"})
+        machine.succeed("steam-copy-game --from alice --to bob --force 100")
+        bob = record("bob")
+        assert has(bob, "100", "1_2_3_alice-depots"), bob
+        assert has(bob, "200", "4_5_6_bob"), bob
+        assert has(bob, "ProcessingQueue", "200;"), bob
+        assert has(bob, "AutoUpdateWindowEnabled", "0"), bob
+        path = "/mnt/steam/home-bob/config/config.vdf"
+        assert machine.succeed(f"stat -c %U:%a {path}").strip() == "bob:600"
+        # A cache the source still had queued stays queued.
+        steam_config("alice", "100;", {"100": "1_2_3_alice-depots"})
+        machine.succeed("steam-copy-game --from alice --to bob --force 100")
+        assert has(record("bob"), "ProcessingQueue", "200;100;"), record("bob")
+        steam_config("alice", "", {"100": "1_2_3_alice-depots"})
+
     with subtest("the copy goes where the receiver's install record is"):
         # bob's record of game 500 is in the Steam folder in his home.
         manifest("alice", 500, "Fifth")
@@ -137,6 +177,8 @@ _: {
         assert owner(f"{lib('bob')}/steamapps/shadercache/100/cache") == "bob"
         assert owner(f"{lib('alice')}/steamapps/shadercache/200/cache") == "alice"
         machine.fail(f"test -e {lib('alice')}/steamapps/shadercache/300")
+        # bob's record of game 200 went to alice with his cache.
+        assert has(record("alice"), "200", "4_5_6_bob"), record("alice")
 
     with subtest("shader sync leaves users whose Steam runs alone"):
         as_user("bob", f"head -c 4M /dev/urandom >> {lib('bob')}/steamapps/shadercache/100/cache")
