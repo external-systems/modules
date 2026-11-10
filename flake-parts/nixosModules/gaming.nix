@@ -19,7 +19,9 @@
 #     shader cache of every game goes to the other users who have the
 #     game installed, so a game's shaders compile once. Users whose
 #     Steam runs are skipped.
-#   _steam-sharing.sh has both.
+#   Both also copy Steam's own record of the cache (config.vdf), or the
+#   receiver's Steam replays every pipeline in it again
+#   (_steam-shader-record.py). _steam-sharing.sh has both.
 {
   flake.nixosModules.gaming = {
     config,
@@ -31,10 +33,14 @@
     sharing = cfg.steamSharing;
     jovian = config.hostSpec.system.jovian or {};
 
+    shaderRecord = pkgs.writers.writePython3Bin "steam-shader-record" {
+      libraries = [pkgs.python3Packages.vdf];
+    } (builtins.readFile ./_steam-shader-record.py);
+
     sharingApp = name: main:
       pkgs.writeShellApplication {
         inherit name;
-        runtimeInputs = with pkgs; [coreutils findutils gnugrep gnused glibc.getent procps util-linux];
+        runtimeInputs = with pkgs; [coreutils findutils gnugrep gnused glibc.getent procps shaderRecord util-linux];
         text = builtins.readFile ./_steam-sharing.sh + "\n${main} \"$@\"\n";
       };
     copyGame = sharingApp "steam-copy-game" "copy_game";
