@@ -75,6 +75,7 @@
       gaming = {
         steamSharing.enable = true;
         steamConfig.enable = true;
+        dedup.enable = true;
       };
       btrfsDedup = {
         enable = true;

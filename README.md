@@ -122,6 +122,18 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   set it to the machine's users. Don't also install `_1password-cli` as a
   package: a Nix-store `op` first on `PATH` can't reach the desktop app.
 
+- **Gaming and Steam sharing.** `hostSpec.system.gaming.steamSharing`
+  gives each user a Steam game library of their own at
+  `<libraryRoot>/<user>` (default `/srv/steam/users`, mode 0700, from
+  tmpfiles; add it in Steam once) on the same btrfs filesystem as the
+  homes. `steam-copy-game` (sudo) and `steam-shader-sync` (timer) share
+  games and shader caches as reflink copies; both run in a systemd
+  sandbox that can only write below `/home` and `dirOf libraryRoot`.
+  `hostSpec.system.gaming.dedup` (on with steamSharing when `/` is
+  btrfs) runs bees on the root filesystem with a `MemoryHigh` ceiling
+  and a monthly scrub, and freezes it while any Steam game runs. See the
+  docs' Gaming page.
+
 ### Defaults set by `default`
 
 - `nixosModules.default`: imports home-manager's NixOS module;

@@ -3,7 +3,9 @@
 # bob alice's game as a reflink copy he owns; steam-shader-sync hands the
 # biggest shader cache of a game to the other users who have it. No real
 # Steam: its folders are faked, and a process named "steam" stands in for
-# a running Steam. Both refuse to write through symlinks.
+# a running Steam. Both run in a sandbox, refuse to write through
+# symlinks, ignore libraries outside libraryRoot and game folders that
+# are paths, and only share a shader cache within one build of a game.
 _: {
   nodes.machine = {pkgs, ...}: {
     virtualisation = {
@@ -14,7 +16,10 @@ _: {
         autoFormat = true;
       };
     };
-    hostSpec.system.gaming.steamSharing.enable = true;
+    hostSpec.system.gaming.steamSharing = {
+      enable = true;
+      libraryRoot = "/mnt/steam/users";
+    };
     users.users = {
       alice.isNormalUser = true;
       bob.isNormalUser = true;
@@ -72,15 +77,18 @@ _: {
     def has(text, key, value):
         return re.search(rf'"{key}"\s+"{re.escape(value)}"', text) is not None
 
-    def manifest(user, appid, installdir):
-        as_user(user, f"printf '\"AppState\"\\n{{\\n\\t\"appid\"\\t\\t\"{appid}\"\\n\\t\"installdir\"\\t\\t\"{installdir}\"\\n}}\\n' > {lib(user)}/steamapps/appmanifest_{appid}.acf")
+    def manifest(user, appid, installdir, build=1, library=None):
+        library = library or lib(user)
+        as_user(user, f"printf '\"AppState\"\\n{{\\n\\t\"appid\"\\t\\t\"{appid}\"\\n\\t\"buildid\"\\t\\t\"{build}\"\\n\\t\"installdir\"\\t\\t\"{installdir}\"\\n}}\\n' > {library}/steamapps/appmanifest_{appid}.acf")
 
     machine.wait_for_unit("multi-user.target")
 
     with subtest("each user has a Steam library of their own"):
-        machine.succeed("install -d -m 0755 /mnt/steam/users")
+        # tmpfiles made the libraries; mounted after boot, so again here.
+        machine.succeed("systemd-tmpfiles --create --prefix=/mnt/steam/users")
         for user in ["alice", "bob"]:
-            machine.succeed(f"install -d -o {user} -g users {lib(user)} {lib(user)}/steamapps")
+            assert machine.succeed(f"stat -c %U:%a {lib(user)}").strip() == f"{user}:700"
+            as_user(user, f"mkdir {lib(user)}/steamapps")
             # The Steam folder in the user's home is on the same btrfs
             # filesystem as the game library, as on kamrui-h1.
             machine.succeed(f"install -d -o {user} -g users /mnt/steam/home-{user} /mnt/steam/home-{user}/steamapps")
@@ -92,11 +100,17 @@ _: {
         as_user("alice", f"head -c 8M /dev/urandom > {lib('alice')}/steamapps/common/Game/game.bin")
         as_user("alice", f"head -c 1M /dev/urandom > {lib('alice')}/steamapps/shadercache/100/cache")
         machine.succeed("systemctl is-enabled steam-shader-sync.timer")
+        assert machine.succeed("systemctl show -P ProtectSystem steam-shader-sync.service").strip() == "strict"
 
     with subtest("steam-copy-game waits for the receiver's Steam to close"):
         steam_running("bob")
         machine.fail("steam-copy-game --from alice --to bob 100")
         steam_quit("bob")
+
+    with subtest("steam-copy-game waits for steam-config-patcher"):
+        machine.succeed("systemd-run --unit=steam-config-patcher@bob sleep 600")
+        machine.fail("steam-copy-game --from alice --to bob 100")
+        machine.succeed("systemctl stop steam-config-patcher@bob")
 
     with subtest("steam-copy-game gives bob his own reflink copy"):
         machine.succeed("steam-copy-game --from alice --to bob 100")
@@ -150,6 +164,24 @@ _: {
         machine.fail("steam-copy-game --from alice --to bob --force 500")
         machine.succeed(f"rm {lib('bob')}/steamapps/appmanifest_500.acf")
 
+    with subtest("a game folder that is a path is refused"):
+        machine.succeed("install -d -o root -m 0700 /etc/secret && echo s3cret > /etc/secret/key")
+        manifest("alice", 600, "../../../../../../../etc/secret")
+        machine.fail("steam-copy-game --from alice --to bob --force 600")
+        machine.succeed("test -f /etc/secret/key")
+        machine.fail(f"grep -rq s3cret {lib('bob')}")
+        as_user("alice", f"rm {lib('alice')}/steamapps/appmanifest_600.acf")
+
+    with subtest("libraries outside libraryRoot are ignored"):
+        # alice lists a library of her own outside /mnt/steam/users.
+        machine.succeed("install -d -o alice -g users /mnt/steam/elsewhere /mnt/steam/elsewhere/steamapps")
+        as_user("alice", "sed -i 's|^}$|\\t\"2\"\\n\\t{\\n\\t\\t\"path\"\\t\\t\"/mnt/steam/elsewhere\"\\n\\t}\\n}|' ~/.local/share/Steam/config/libraryfolders.vdf")
+        machine.succeed("grep -q /mnt/steam/elsewhere /mnt/steam/home-alice/config/libraryfolders.vdf")
+        manifest("alice", 700, "Seventh", library="/mnt/steam/elsewhere")
+        as_user("alice", "mkdir -p /mnt/steam/elsewhere/steamapps/common/Seventh")
+        out = machine.fail("steam-copy-game --from alice --to bob 700 2>&1")
+        assert "no installed game 700" in out, out
+
     with subtest("steam-copy-game never writes through a link"):
         as_user("bob", f"mv {lib('bob')}/steamapps/common {lib('bob')}/steamapps/common.real && ln -s /etc {lib('bob')}/steamapps/common")
         machine.fail("steam-copy-game --from alice --to bob --force 100")
@@ -179,6 +211,20 @@ _: {
         machine.fail(f"test -e {lib('alice')}/steamapps/shadercache/300")
         # bob's record of game 200 went to alice with his cache.
         assert has(record("alice"), "200", "4_5_6_bob"), record("alice")
+        # alice's previous config.vdf is kept.
+        machine.succeed("test -f /mnt/steam/home-alice/config/config.vdf.steam-sharing.bak")
+
+    with subtest("shader sync only shares within one build of a game"):
+        # Game 800: alice's big cache is from build 1, bob updated to 2.
+        manifest("alice", 800, "Eighth", build=1)
+        manifest("bob", 800, "Eighth", build=2)
+        as_user("alice", f"mkdir -p {lib('alice')}/steamapps/shadercache/800 && head -c 2M /dev/urandom > {lib('alice')}/steamapps/shadercache/800/cache")
+        as_user("bob", f"mkdir -p {lib('bob')}/steamapps/shadercache/800 && head -c 1K /dev/urandom > {lib('bob')}/steamapps/shadercache/800/cache")
+        machine.succeed("systemctl start steam-shader-sync.service")
+        machine.fail(f"cmp {lib('alice')}/steamapps/shadercache/800/cache {lib('bob')}/steamapps/shadercache/800/cache")
+        manifest("bob", 800, "Eighth", build=1)
+        machine.succeed("systemctl start steam-shader-sync.service")
+        machine.succeed(f"cmp {lib('alice')}/steamapps/shadercache/800/cache {lib('bob')}/steamapps/shadercache/800/cache")
 
     with subtest("shader sync leaves users whose Steam runs alone"):
         as_user("bob", f"head -c 4M /dev/urandom >> {lib('bob')}/steamapps/shadercache/100/cache")
