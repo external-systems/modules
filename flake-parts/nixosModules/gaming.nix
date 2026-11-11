@@ -21,7 +21,14 @@
 #     Steam runs are skipped.
 #   Both also copy Steam's own record of the cache (config.vdf), or the
 #   receiver's Steam replays every pipeline in it again
-#   (_steam-shader-record.py). _steam-sharing.sh has both.
+#   (_steam-shader-record.py). _steam-sharing.sh has both. They run as
+#   root in a systemd sandbox that can only write below /home and the
+#   game libraries; every replace or delete in a user's folders runs as
+#   that user. Game libraries are `<libraryRoot>/<user>` (tmpfiles); a
+#   library elsewhere in a user's libraryfolders.vdf is ignored.
+#
+# - `dedup`: bees (btrfs-dedup.nix) on the root btrfs filesystem, on by
+#   default with steamSharing, frozen while any Steam game runs.
 {
   flake.nixosModules.gaming = {
     config,
@@ -40,11 +47,87 @@
     sharingApp = name: main:
       pkgs.writeShellApplication {
         inherit name;
-        runtimeInputs = with pkgs; [coreutils findutils gnugrep gnused glibc.getent procps shaderRecord util-linux];
+        runtimeInputs = with pkgs; [coreutils findutils gnugrep gnused glibc.getent procps shaderRecord systemd util-linux];
         text = builtins.readFile ./_steam-sharing.sh + "\n${main} \"$@\"\n";
       };
-    copyGame = sharingApp "steam-copy-game" "copy_game";
     shaderSync = sharingApp "steam-shader-sync" "sync_shaders";
+
+    # Both run as root in this sandbox: they may only write below /home
+    # and the game libraries, and keep only the capabilities to read
+    # every user's files, hand files over and drop to a user.
+    sandbox = {
+      ProtectSystem = "strict";
+      ReadWritePaths = ["-/home" "-${dirOf sharing.libraryRoot}"];
+      PrivateTmp = true;
+      PrivateNetwork = true;
+      NoNewPrivileges = true;
+      ProtectKernelTunables = true;
+      ProtectKernelModules = true;
+      ProtectKernelLogs = true;
+      ProtectControlGroups = true;
+      ProtectClock = true;
+      RestrictSUIDSGID = true;
+      RestrictRealtime = true;
+      LockPersonality = true;
+      SystemCallArchitectures = "native";
+      CapabilityBoundingSet = ["CAP_CHOWN" "CAP_FOWNER" "CAP_DAC_OVERRIDE" "CAP_DAC_READ_SEARCH" "CAP_SETUID" "CAP_SETGID"];
+      Environment = "STEAM_LIBRARY_ROOT=${sharing.libraryRoot}";
+    };
+    # The same sandbox as `systemd-run -p` properties.
+    sandboxArgs = lib.concatLists (lib.mapAttrsToList (name: value: [
+        "-p"
+        "${name}=${
+          if lib.isBool value
+          then lib.boolToString value
+          else if lib.isList value
+          then lib.concatStringsSep " " value
+          else value
+        }"
+      ])
+      sandbox);
+    copyGameUnsandboxed = sharingApp "steam-copy-game-unsandboxed" "copy_game";
+    # steam-copy-game runs from a root shell, so it starts itself as a
+    # transient unit in the sandbox; its output and exit code stay the
+    # caller's.
+    copyGame = pkgs.writeShellApplication {
+      name = "steam-copy-game";
+      runtimeInputs = [pkgs.coreutils pkgs.systemd];
+      text = ''
+        if [ "$(id -u)" != 0 ]; then
+          exec ${lib.getExe copyGameUnsandboxed} "$@"
+        fi
+        exec systemd-run --quiet --pipe --wait --collect --service-type=exec \
+          ${lib.escapeShellArgs sandboxArgs} \
+          ${lib.getExe copyGameUnsandboxed} "$@"
+      '';
+    };
+
+    # Root filesystem, for bees' default (dedup).
+    root = config.fileSystems."/" or null;
+    rootBtrfs = root != null && root.fsType == "btrfs";
+    beesUnits = map (name: "beesd@${name}.service") (lib.attrNames config.hostSpec.system.btrfsDedup.filesystems);
+
+    # A Steam game runs while one of Steam's `reaper SteamLaunch AppId=`
+    # processes does (every game, desktop and Gaming Mode, any user).
+    pauseBees = pkgs.writeShellApplication {
+      name = "bees-pause-while-playing";
+      runtimeInputs = [pkgs.procps pkgs.systemd pkgs.coreutils];
+      text = ''
+        units=(${lib.escapeShellArgs beesUnits})
+        while :; do
+          if pgrep -f 'SteamLaunch AppId=' >/dev/null; then want=frozen; else want=running; fi
+          for unit in "''${units[@]}"; do
+            state=$(systemctl show -P FreezerState "$unit")
+            if [ "$want" = frozen ] && [ "$state" = running ] && systemctl -q is-active "$unit"; then
+              systemctl freeze "$unit" && echo "a game is running: $unit paused"
+            elif [ "$want" = running ] && [ "$state" = frozen ]; then
+              systemctl thaw "$unit" && echo "no game is running: $unit resumed"
+            fi
+          done
+          sleep 10
+        done
+      '';
+    };
   in {
     options.hostSpec.system.gaming = {
       user = {
@@ -100,7 +183,54 @@
           default = lib.attrNames (lib.filterAttrs (_: user: user.isNormalUser) config.users.users);
           defaultText = lib.literalExpression "every normal user (isNormalUser)";
           example = ["alice" "bob"];
-          description = "Users whose shader caches steam-shader-sync shares.";
+          description = ''
+            Users whose shader caches steam-shader-sync shares, and who
+            get a game library in `libraryRoot`.
+          '';
+        };
+        libraryRoot = lib.mkOption {
+          type = lib.types.str;
+          default = "/srv/steam/users";
+          example = "/mnt/games/users";
+          description = ''
+            Folder of the users' game libraries: each user in `users` gets
+            `<libraryRoot>/<user>` (mode 0700, theirs), to add in Steam
+            (Settings > Storage) once. Must be on the same btrfs
+            filesystem as the users' homes. steam-copy-game and
+            steam-shader-sync only use these libraries and each user's
+            Steam folder, and may only write below /home and the parent
+            of this folder.
+          '';
+        };
+      };
+
+      dedup = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = sharing.enable && rootBtrfs;
+          defaultText = lib.literalExpression ''steamSharing.enable && config.fileSystems."/".fsType == "btrfs"'';
+          example = false;
+          description = ''
+            Whether bees deduplicates the root btrfs filesystem
+            (hostSpec.system.btrfsDedup, filesystem `root`): what users
+            download on their own (the same game, Proton prefixes, shader
+            caches) is stored once. It runs in every boot entry. On by
+            default with steamSharing when / is btrfs.
+          '';
+        };
+        pauseWhilePlaying = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          example = false;
+          description = ''
+            Freeze bees (systemctl freeze) while any user runs a Steam
+            game, and thaw it when the last game exits, checked every 10
+            seconds. bees' idle CPU and I/O priority does not keep it off
+            a fast NVMe disk (the "none" I/O scheduler ignores I/O
+            classes), so a game would otherwise share the disk and page
+            cache with it. Applies to every hostSpec.system.btrfsDedup
+            filesystem.
+          '';
         };
       };
     };
@@ -150,17 +280,38 @@
         environment.systemPackages = [copyGame];
 
         systemd = {
+          # Each user's game library, theirs alone.
+          tmpfiles.settings.steam-libraries =
+            {
+              ${sharing.libraryRoot}.d = {
+                user = "root";
+                group = "root";
+                mode = "0755";
+              };
+            }
+            // lib.listToAttrs (map (user:
+              lib.nameValuePair "${sharing.libraryRoot}/${user}" {
+                d = {
+                  inherit user;
+                  inherit (config.users.users.${user}) group;
+                  mode = "0700";
+                };
+              })
+            sharing.users);
+
           services.steam-shader-sync = {
             description = "Share Steam shader caches between users";
             # At boot, before anyone's Steam starts.
             before = ["display-manager.service"];
             wantedBy = ["multi-user.target"];
-            serviceConfig = {
-              Type = "oneshot";
-              ExecStart = lib.escapeShellArgs ([(lib.getExe shaderSync)] ++ sharing.users);
-              Nice = 19;
-              IOSchedulingClass = "idle";
-            };
+            serviceConfig =
+              sandbox
+              // {
+                Type = "oneshot";
+                ExecStart = lib.escapeShellArgs ([(lib.getExe shaderSync)] ++ sharing.users);
+                Nice = 19;
+                IOSchedulingClass = "idle";
+              };
           };
           timers.steam-shader-sync = {
             description = "Share Steam shader caches between users";
@@ -169,6 +320,38 @@
               OnBootSec = "5min";
               OnUnitActiveSec = "15min";
             };
+          };
+        };
+      })
+
+      (lib.mkIf cfg.dedup.enable {
+        assertions = [
+          {
+            assertion = rootBtrfs || config.hostSpec.system.btrfsDedup.filesystems ? root;
+            message = ''hostSpec.system.gaming.dedup: / is not btrfs; set hostSpec.system.btrfsDedup.filesystems.root.spec, or dedup.enable = false.'';
+          }
+        ];
+        hostSpec.system.btrfsDedup = {
+          enable = true;
+          filesystems.root.spec = lib.mkIf rootBtrfs (lib.mkDefault (
+            if root.device != null
+            then root.device
+            else "LABEL=${root.label}"
+          ));
+        };
+      })
+
+      (lib.mkIf (cfg.dedup.enable && cfg.dedup.pauseWhilePlaying) {
+        systemd.services.bees-pause-while-playing = {
+          description = "Pause bees while a Steam game runs";
+          after = beesUnits;
+          wantedBy = ["multi-user.target"];
+          # Never leave bees frozen behind.
+          postStop = "${lib.getExe' pkgs.systemd "systemctl"} thaw ${lib.escapeShellArgs beesUnits} || true";
+          serviceConfig = {
+            ExecStart = lib.getExe pauseBees;
+            Restart = "always";
+            RestartSec = 10;
           };
         };
       })

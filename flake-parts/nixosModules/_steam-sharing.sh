@@ -1,13 +1,20 @@
 # shellcheck shell=bash
 # Shared by steam-copy-game and steam-shader-sync (gaming.nix). Run as
-# root. Every user keeps a Steam library and caches of their own; these
-# only make reflink copies (btrfs: instant, no extra space) that the
-# receiving user then owns, so Steam always sees files it fully owns.
+# root, inside a systemd sandbox that can only write below /home and
+# the game libraries (gaming.nix). Every user keeps a Steam library and
+# caches of their own; these only make reflink copies (btrfs: instant,
+# no extra space) that the receiving user then owns, so Steam always
+# sees files it fully owns.
 #
-# A copy is built in a fresh folder next to its target, handed to the
-# receiving user, then moved into place: cp -a never follows a symlink
-# it copies, chown never dereferences, and the target folders must be
-# real folders owned by the receiving user.
+# Root only reads the source and builds each copy in a fresh folder
+# next to its target. Everything that replaces or removes a file in the
+# receiving user's folders runs as that user (as_user), so a folder the
+# user swaps for a link between a check and a write can never make root
+# delete or overwrite what the user could not.
+#
+# STEAM_LIBRARY_ROOT (set by gaming.nix): game libraries live in
+# $STEAM_LIBRARY_ROOT/<user>. Libraries anywhere else in a user's
+# libraryfolders.vdf (a file the user can edit) are ignored.
 
 log() { printf '%s\n' "$*"; }
 die() {
@@ -16,6 +23,22 @@ die() {
 }
 
 steam_running() { pgrep -u "$1" -x steam >/dev/null; }
+
+# steam-config-nix's patcher (steam-config.nix) rewrites config.vdf right
+# after Steam exits; writing it at the same time would drop one change.
+patcher_busy() {
+  case $(systemctl show -P ActiveState "steam-config-patcher@$1.service" 2>/dev/null) in
+  active | activating | reloading | deactivating) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+# Run a command as user $1, with their groups and no privileges.
+as_user() {
+  local user=$1
+  shift
+  setpriv --reuid="$user" --regid="$(id -g "$user")" --init-groups --no-new-privs -- "$@"
+}
 
 # The user's Steam folder: the first of Steam's own candidates.
 steam_root() {
@@ -30,13 +53,17 @@ steam_root() {
   return 1
 }
 
-# Library folders of a user's Steam, one per line, the Steam folder first.
+# Library folders of a user's Steam, one per line, the Steam folder
+# first; of the libraries Steam lists, only the user's own game library.
 libraries() {
-  local root
+  local root own
   root=$(steam_root "$1") || return 0
   printf '%s\n' "$root"
-  if [ -f "$root/config/libraryfolders.vdf" ]; then
-    grep -oP '^\s*"path"\s+"\K[^"]+' "$root/config/libraryfolders.vdf" | grep -vxF "$root" || true
+  own="${STEAM_LIBRARY_ROOT:?}/$1"
+  if [ -f "$root/config/libraryfolders.vdf" ] &&
+    grep -oP '^\s*"path"\s+"\K[^"]+' "$root/config/libraryfolders.vdf" | grep -qxF "$own" &&
+    [ "$own" != "$root" ]; then
+    printf '%s\n' "$own"
   fi
 }
 
@@ -49,23 +76,32 @@ owned_dir() {
   [ -d "$2" ] && [ ! -L "$2" ] && [ "$(stat -c %U -- "$2")" = "$1" ]
 }
 
-# Copy $2 (a folder) to $3 for user $1: build it in a fresh folder next to
-# $3, hand it to the user, then move it into place, replacing $3.
+# A value from an appmanifest_<appid>.acf.
+acf_value() { grep -oP '^\s*"'"$2"'"\s+"\K[^"]+' "$1"; }
+
+# A game's folder name under steamapps/common: one plain name, never a
+# path (the manifest is the source user's file).
+valid_installdir() {
+  [ -n "$1" ] && [ "$1" != . ] && [ "$1" != .. ] && [[ $1 != */* ]]
+}
+
+# Copy $2 (a folder) to $3 for user $1: root builds the copy in a fresh
+# folder next to $3 and hands it to the user, who replaces $3 with it.
 place_copy() {
-  local user=$1 src=$2 dest=$3 group tmp
-  group=$(id -gn "$user")
+  local user=$1 src=$2 dest=$3 tmp
   tmp=$(mktemp -d "$(dirname -- "$dest")/.steam-sharing.XXXXXX")
   cp -a --reflink=always -- "$src" "$tmp/copy"
-  chown -R --no-dereference "$user:$group" "$tmp/copy"
-  rm -rf -- "$dest"
-  mv -T -- "$tmp/copy" "$dest"
-  rmdir -- "$tmp"
+  chown -R --no-dereference "$user:$(id -gn "$user")" "$tmp"
+  as_user "$user" rm -rf -- "$dest"
+  as_user "$user" mv -T -- "$tmp/copy" "$dest"
+  as_user "$user" rmdir -- "$tmp"
 }
 
 # Steam's record of a game's shader cache (config.vdf) follows a copy of
 # the cache from user $2 to user $1 (_steam-shader-record.py says why).
 # Only into a Steam that has run (config.vdf exists) and only while it
-# is closed: Steam rewrites config.vdf when it exits.
+# is closed: Steam rewrites config.vdf when it exits. The receiver's
+# previous config.vdf stays as config.vdf.steam-sharing.bak.
 copy_shader_record() {
   local to=$1 from=$2 appid=$3 src dir dst tmp mode
   src=$(steam_root "$from") && dir=$(steam_root "$to") || return 0
@@ -77,6 +113,10 @@ copy_shader_record() {
     log "$dir is not $to's: Steam's record of shader cache $appid not copied"
     return 0
   }
+  if patcher_busy "$to"; then
+    log "steam-config-patcher@$to is writing config.vdf: Steam's record of shader cache $appid not copied"
+    return 0
+  fi
   mode=$(stat -c %a -- "$dst")
   tmp=$(mktemp "$dir/.steam-sharing.XXXXXX")
   steam-shader-record "$src" "$dst" "$appid" >"$tmp" || {
@@ -86,8 +126,21 @@ copy_shader_record() {
   }
   chown --no-dereference "$to:$(id -gn "$to")" "$tmp"
   chmod "$mode" "$tmp"
-  mv -T -- "$tmp" "$dst"
+  as_user "$to" cp -p -- "$dst" "$dir/config.vdf.steam-sharing.bak"
+  as_user "$to" mv -T -- "$tmp" "$dst"
   log "copied Steam's record of shader cache $appid; $to's Steam does not process it again"
+}
+
+# A file from root's side ($2) becomes user $1's file $3 (mode 0644),
+# unless $3 exists.
+place_file() {
+  local user=$1 src=$2 dest=$3 tmp
+  tmp=$(mktemp "$(dirname -- "$dest")/.steam-sharing.XXXXXX")
+  cp -- "$src" "$tmp"
+  chown --no-dereference "$user:$(id -gn "$user")" "$tmp"
+  chmod 0644 "$tmp"
+  as_user "$user" mv -n -T -- "$tmp" "$dest"
+  as_user "$user" rm -f -- "$tmp"
 }
 
 # steam-copy-game --from <user> --to <user> [--force] <appid>
@@ -111,6 +164,7 @@ copy_game() {
     die "usage: steam-copy-game --from <user> --to <user> [--force] <appid>"
   [ "$(id -u)" = 0 ] || die "run as root (sudo)"
   steam_running "$to" && die "$to's Steam is running: quit it first"
+  patcher_busy "$to" && die "steam-config-patcher@$to is applying Steam settings: try again in a minute"
 
   local lib src="" manifest installdir
   while IFS= read -r lib; do
@@ -121,15 +175,17 @@ copy_game() {
   done < <(libraries "$from")
   [ -n "$src" ] || die "$from has no installed game $appid"
   manifest="$src/steamapps/appmanifest_$appid.acf"
-  installdir=$(grep -oP '^\s*"installdir"\s+"\K[^"]+' "$manifest") ||
+  installdir=$(acf_value "$manifest" installdir) ||
     die "$manifest has no installdir"
-  [ -d "$src/steamapps/common/$installdir" ] ||
+  valid_installdir "$installdir" ||
+    die "$manifest: installdir \"$installdir\" is not a plain folder name"
+  [ -d "$src/steamapps/common/$installdir" ] && [ ! -L "$src/steamapps/common/$installdir" ] ||
     die "$src/steamapps/common/$installdir is missing"
 
   # Where the copy goes: the library that already has the receiver's
   # install record of the game (one record per game, or Steam sees it
-  # twice); else a game library the receiver added, before the Steam
-  # folder in their home. Always on the source's filesystem (reflink).
+  # twice); else the receiver's game library, before the Steam folder
+  # in their home. Always on the source's filesystem (reflink).
   local -a records=() added=() home=()
   local first=1
   while IFS= read -r lib; do
@@ -156,11 +212,11 @@ copy_game() {
 
   local d
   for d in common shadercache; do
-    if [ ! -e "$dest/steamapps/$d" ]; then
-      install -d -o "$to" -g "$(id -gn "$to")" -- "$dest/steamapps/$d"
+    if [ ! -e "$dest/steamapps/$d" ] && [ ! -L "$dest/steamapps/$d" ]; then
+      as_user "$to" mkdir -- "$dest/steamapps/$d"
     fi
     owned_dir "$to" "$dest/steamapps/$d" ||
-      die "$dest/steamapps/$d is not a folder $to owns (a link from the old shared library?)"
+      die "$dest/steamapps/$d is not a folder $to owns (a link?)"
   done
 
   local game="$dest/steamapps/common/$installdir"
@@ -178,26 +234,28 @@ copy_game() {
 
   local record="$dest/steamapps/appmanifest_$appid.acf"
   if [ ! -e "$record" ] && [ ! -L "$record" ]; then
-    local tmp
-    tmp=$(mktemp "$dest/steamapps/.steam-sharing.XXXXXX")
-    cp -- "$manifest" "$tmp"
-    chown --no-dereference "$to:$(id -gn "$to")" "$tmp"
-    chmod 0644 "$tmp"
-    mv -T -- "$tmp" "$record"
+    place_file "$to" "$manifest" "$record"
     log "copied install record; $to's Steam shows $installdir as installed"
   fi
 }
 
 # steam-shader-sync <user>...: for every game, the biggest shader cache
-# any of the users has goes to the others who have the game installed
-# and a smaller cache. Users whose Steam runs are left out entirely.
+# any of the users has goes to the others who have the same build of the
+# game installed (buildid in its install record) and a smaller cache. A
+# cache from another build of the game is never shared: after an update
+# it would replace a current cache with an outdated one. Users whose
+# Steam runs, or whose Steam settings are being applied, are left out.
 sync_shaders() {
   local -A size=() path=() owner=()
   local -a users=()
-  local user lib cache appid bytes
+  local user lib cache appid build key bytes
   for user in "$@"; do
     if steam_running "$user"; then
       log "$user's Steam is running: skipped"
+      continue
+    fi
+    if patcher_busy "$user"; then
+      log "steam-config-patcher@$user is running: skipped"
       continue
     fi
     users+=("$user")
@@ -207,35 +265,40 @@ sync_shaders() {
         [ -d "$cache" ] && [ ! -L "$cache" ] || continue
         appid=$(basename -- "$cache")
         [[ $appid =~ ^[0-9]+$ ]] || continue
+        build=$(acf_value "$lib/steamapps/appmanifest_$appid.acf" buildid 2>/dev/null) || continue
+        key="$appid:$build"
         bytes=$(du -sb -- "$cache" | cut -f1)
-        if [ "$bytes" -gt "${size[$appid]:-0}" ]; then
-          size[$appid]=$bytes
-          path[$appid]=$cache
-          owner[$appid]=$user
+        if [ "$bytes" -gt "${size[$key]:-0}" ]; then
+          size[$key]=$bytes
+          path[$key]=$cache
+          owner[$key]=$user
         fi
       done
     done < <(libraries "$user")
   done
 
-  for appid in "${!size[@]}"; do
+  for key in "${!size[@]}"; do
+    appid=${key%%:*}
+    build=${key#*:}
     for user in "${users[@]}"; do
-      [ "$user" != "${owner[$appid]}" ] || continue
+      [ "$user" != "${owner[$key]}" ] || continue
       while IFS= read -r lib; do
         [ -f "$lib/steamapps/appmanifest_$appid.acf" ] || continue
+        [ "$(acf_value "$lib/steamapps/appmanifest_$appid.acf" buildid 2>/dev/null)" = "$build" ] || break
         owned_dir "$user" "$lib/steamapps" || break
         if [ ! -e "$lib/steamapps/shadercache" ] && [ ! -L "$lib/steamapps/shadercache" ]; then
-          install -d -o "$user" -g "$(id -gn "$user")" -- "$lib/steamapps/shadercache"
+          as_user "$user" mkdir -- "$lib/steamapps/shadercache"
         fi
         owned_dir "$user" "$lib/steamapps/shadercache" || break
-        [ "$(device "$lib")" = "$(device "${path[$appid]}")" ] || break
+        [ "$(device "$lib")" = "$(device "${path[$key]}")" ] || break
         cache="$lib/steamapps/shadercache/$appid"
         if [ -d "$cache" ] && [ ! -L "$cache" ] &&
-          [ "$(du -sb -- "$cache" | cut -f1)" -ge "${size[$appid]}" ]; then
+          [ "$(du -sb -- "$cache" | cut -f1)" -ge "${size[$key]}" ]; then
           break
         fi
-        place_copy "$user" "${path[$appid]}" "$cache"
-        log "shader cache $appid: ${owner[$appid]}'s copy to $user"
-        copy_shader_record "$user" "${owner[$appid]}" "$appid"
+        place_copy "$user" "${path[$key]}" "$cache"
+        log "shader cache $appid (build $build): ${owner[$key]}'s copy to $user"
+        copy_shader_record "$user" "${owner[$key]}" "$appid"
         break
       done < <(libraries "$user")
     done

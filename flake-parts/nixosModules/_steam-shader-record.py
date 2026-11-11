@@ -40,8 +40,27 @@ def child(node, key, create=False):
             return value
     if not create:
         return None
-    node[key] = {}
+    node[key] = vdf.VDFDict()
     return node[key]
+
+
+def put(node, key, value):
+    """node[key] = value, replacing every earlier key of that name.
+
+    A VDFDict keeps duplicate keys, so a plain assignment would add a
+    second one next to the old value.
+    """
+    drop(node, key)
+    node[key] = value
+
+
+def drop(node, key):
+    """No key of that name in node."""
+    if key in node:
+        if isinstance(node, vdf.VDFDict):
+            node.remove_all_for(key)
+        else:
+            del node[key]
 
 
 def manager(config, create=False):
@@ -55,9 +74,11 @@ def manager(config, create=False):
 
 def load(path):
     if not path.is_file():
-        return {}
+        return vdf.VDFDict()
     with path.open(encoding="utf-8") as file:
-        return vdf.load(file)
+        # VDFDict keeps duplicate keys and their order, so the rest of
+        # the receiver's config.vdf is written back exactly as Steam had it.
+        return vdf.load(file, mapper=vdf.VDFDict)
 
 
 def queue(record):
@@ -67,9 +88,9 @@ def queue(record):
 def mirror(src, dst, key):
     """dst[key] = src[key], or no dst[key] when src has none."""
     if key in src:
-        dst[key] = src[key]
+        put(dst, key, src[key])
     else:
-        dst.pop(key, None)
+        drop(dst, key)
 
 
 def main():
@@ -87,12 +108,13 @@ def main():
     for key in ("CommittedDepotManifests", "App"):
         mirror(child(src, key) or {}, child(dst, key, create=True), appid)
     buckets = child(dst, "CompatToolBucketHashes", create=True)
-    buckets.update(child(src, "CompatToolBucketHashes") or {})
+    for name, value in (child(src, "CompatToolBucketHashes") or {}).items():
+        put(buckets, name, value)
 
     pending = [a for a in queue(dst) if a != appid]
     if appid in queue(src):
         pending.append(appid)
-    dst["ProcessingQueue"] = "".join(f"{a};" for a in pending)
+    put(dst, "ProcessingQueue", "".join(f"{a};" for a in pending))
 
     sys.stdout.write(vdf.dumps(config, pretty=True))
 
