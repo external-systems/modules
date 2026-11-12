@@ -16,6 +16,10 @@ public domain), ODOO_PROBE_CAFILE the CA bundle (a downloaded CA).
   INSTANCE db-list                     exit 0 if the database service lists databases
   INSTANCE db-drop MASTER_PASSWORD     exit 0 if the database service drops the database
   INSTANCE base-url PASSWORD URL       exit 0 if web.base.url is URL and frozen
+  INSTANCE send-mail PASSWORD TO SUBJ  queue a mail and run the mail queue cron
+  INSTANCE mail-state PASSWORD SUBJ    print the queued mail's state and failure
+  INSTANCE installed PASSWORD MODULE   exit 0 if MODULE is installed
+  INSTANCE neutralized PASSWORD        exit 0 if the database is neutralized
 """
 
 import base64
@@ -53,7 +57,8 @@ class Instance:
             reply = json.load(response)
         if "error" in reply:
             raise SystemExit(f"odoo error: {json.dumps(reply['error'])[:2000]}")
-        return reply["result"]
+        # A method returning None leaves "result" out.
+        return reply.get("result")
 
     def login(self, password):
         uid = self.call("common", "login", self.db, "admin", password)
@@ -121,6 +126,51 @@ def main():
         }
         assert params.get("web.base.url") == url, params
         assert params.get("web.base.url.freeze") == "True", params
+    elif action == "send-mail":
+        password, to, subject = args
+        # Queued and kept after sending, as Odoo's own mails are; the queue
+        # cron (kept on by the module after neutralize) sends it.
+        odoo.execute(
+            password,
+            "mail.mail",
+            "create",
+            {"subject": subject, "email_to": to, "body_html": "<p>vm test</p>", "auto_delete": False},
+        )
+        [cron] = odoo.execute(
+            password,
+            "ir.model.data",
+            "search_read",
+            [["module", "=", "mail"], ["name", "=", "ir_cron_mail_scheduler_action"]],
+            fields=["res_id"],
+        )
+        odoo.execute(password, "ir.cron", "method_direct_trigger", [cron["res_id"]])
+    elif action == "mail-state":
+        password, subject = args
+        print(odoo.execute(
+            password,
+            "mail.mail",
+            "search_read",
+            [["subject", "=", subject]],
+            fields=["state", "failure_reason", "email_from", "email_to"],
+        ))
+    elif action == "installed":
+        password, module = args
+        found = odoo.execute(
+            password,
+            "ir.module.module",
+            "search_count",
+            [["name", "=", module], ["state", "=", "installed"]],
+        )
+        assert found, f"{module} is not installed"
+    elif action == "neutralized":
+        value = odoo.execute(
+            args[0],
+            "ir.config_parameter",
+            "search_read",
+            [["key", "=", "database.is_neutralized"]],
+            fields=["value"],
+        )
+        assert value and value[0]["value"] in ("True", "true", "1"), value
     elif action == "db-list":
         odoo.call("db", "list")
     elif action == "db-drop":

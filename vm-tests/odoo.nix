@@ -16,6 +16,7 @@ in {
         blank = {
           demoData = false;
           workers = 1;
+          memoryMax = "2G";
         };
       };
       # Two databases created at once, one with demo data.
@@ -141,13 +142,30 @@ in {
 
     with subtest("everything listens on loopback only"):
         listeners = machine.succeed("ss -ltnH").split("\n")
-        for port in ("80", "443", "18069", "18070", "18071", "18072"):
+        # Odoo, nginx and Mailpit (UI 8025, SMTP 1025).
+        for port in ("80", "443", "18069", "18070", "18071", "18072", "8025", "1025"):
             local = [line.split()[3] for line in listeners if line and line.split()[3].endswith(":" + port)]
             assert local, f"nothing listens on {port}"
             for address in local:
                 assert address.startswith(("127.0.0.1:", "[::1]:")), f"{address} is not loopback"
-        for port in (80, 443, 18069, 18070, 18071, 18072):
+        for port in (80, 443, 18069, 18070, 18071, 18072, 8025, 1025):
             outsider.fail(f"curl -s --connect-timeout 3 http://machine:{port}/")
+
+    with subtest("a crashed instance comes back on its own"):
+        pid = machine.succeed("systemctl show -p MainPID --value odoo-blank.service").strip()
+        machine.succeed(f"kill -9 {pid}")
+        machine.wait_until_succeeds(
+            f"[ \"$(systemctl show -p MainPID --value odoo-blank.service)\" != {pid} ] && systemctl is-active odoo-blank.service",
+            timeout=120,
+        )
+        machine.wait_until_succeeds(f"curl -sf https://blank.{base_domain}/web/login >/dev/null", timeout=300)
+        assert machine.succeed("systemctl show -p NRestarts --value odoo-blank.service").strip() == "1"
+
+    with subtest("memory is capped per instance and per worker"):
+        assert machine.succeed("systemctl show -p MemoryMax --value odoo-demo.service").strip() == str(4 * 1024**3)
+        assert machine.succeed("systemctl show -p MemoryMax --value odoo-blank.service").strip() == str(2 * 1024**3)
+        machine.succeed(f"grep -x 'limit_memory_hard={2048 * 1024 * 1024}' /run/odoo-demo/odoo.cfg >/dev/null")
+        machine.succeed("grep -x 'max_cron_threads=1' /run/odoo-demo/odoo.cfg >/dev/null")
 
     with subtest("a password changed in Odoo survives a restart"):
         probe(machine, "demo", "set-password", admin_password, "changed-in-the-ui")
@@ -175,6 +193,7 @@ in {
         empty.wait_for_unit("postgresql.service", timeout=300)
         empty.fail("systemctl list-units --all --plain --no-legend 'odoo-*' | grep . >/dev/null")
         empty.fail("systemctl is-active nginx.service")
+        empty.fail("systemctl is-active mailpit-odoo.service")
         assert "No Odoo instances configured." in empty.succeed("odoo-reset --list")
         empty.succeed("odoo-reset --all --yes")
         assert "Nothing left behind" in empty.succeed("odoo-purge")
