@@ -10,6 +10,7 @@
         {Home = "index.md";}
         {
           Odoo = [
+            {"CEO: Odoo" = "ceo-odoo.md";}
             "odoo.md"
             "odoo-access.md"
           ];

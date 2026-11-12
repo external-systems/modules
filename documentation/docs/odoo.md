@@ -9,7 +9,8 @@ created state in seconds. Nothing is reachable from other machines
 unless an instance asks for it: see
 [Reaching Odoo from other machines](odoo-access.md) for the LAN (a
 Windows laptop, say) and the internet (a real domain with Let's
-Encrypt).
+Encrypt). For a non-technical walkthrough (using the test instances
+and Mailpit from a browser), see [CEO: Odoo](ceo-odoo.md).
 
 ## Enabling and adding instances
 
