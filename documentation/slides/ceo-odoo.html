@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Odoo for local testing</title>
+    <!-- Same page as the generated index.html (pkgs flakeModules.docs),
+         for a second deck: the build inlines ceo-odoo.md like slides.md. -->
+    <link rel="stylesheet" href="reveal/reset.css" />
+    <link rel="stylesheet" href="reveal/reveal.css" />
+    <link rel="stylesheet" href="reveal/theme/black.css" />
+    <link rel="stylesheet" href="reveal/plugin/highlight/monokai.css" />
+    <link rel="stylesheet" href="org/org.css" />
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section data-markdown="ceo-odoo.md" data-separator="^---$" data-separator-vertical="^--$" data-separator-notes="^Note:"></section>
+      </div>
+    </div>
+    <script src="reveal/reveal.js"></script>
+    <script src="reveal/plugin/markdown.js"></script>
+    <script src="reveal/plugin/highlight.js"></script>
+    <script src="reveal/plugin/notes.js"></script>
+    <script src="org/speaker-sync.js"></script>
+    <script src="org/rough.js"></script>
+    <script src="org/sketch.js"></script>
+    <script>
+      Reveal.initialize({
+        hash: true,
+        slideNumber: "h.v",
+        progress: true,
+        transition: "slide",
+        backgroundTransition: "fade",
+        autoAnimateDuration: 0.8,
+        width: 1280,
+        height: 720,
+        plugins: [RevealMarkdown, RevealHighlight, RevealNotes],
+      }).then(sketchDiagrams);
+    </script>
+  </body>
+</html>
