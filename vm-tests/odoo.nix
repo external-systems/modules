@@ -114,6 +114,11 @@ in {
             ).strip()
             assert code == "101", f"{name}: {code}"
 
+    with subtest("nginx reloads (deploys and certificate renewals reload it)"):
+        machine.succeed("systemctl reload nginx.service")
+        machine.succeed("systemctl is-active nginx.service")
+        machine.succeed(f"curl -sf https://demo.{base_domain}/web/login >/dev/null")
+
     with subtest("the master password stays out of the store"):
         for name in instances:
             unit = f"odoo-{name}"

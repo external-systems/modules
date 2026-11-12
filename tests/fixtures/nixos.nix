@@ -59,11 +59,25 @@
       ollama.enable = true;
       odoo = {
         enable = true;
+        # Documentation-range placeholders (RFC 5737, RFC 2606).
+        lan = {
+          addresses = ["192.0.2.10"];
+          interfaces = ["eth0"];
+          allowedClients = ["192.0.2.0/24"];
+        };
+        acme.email = "hostmaster@example.com";
         instances = {
-          demo = {};
+          demo.expose.lan = true;
           blank = {
             demoData = false;
             port = 19069;
+          };
+          shop.expose = {
+            lan = true;
+            public = {
+              enable = true;
+              domain = "erp.example.com";
+            };
           };
         };
       };

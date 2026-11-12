@@ -2,7 +2,9 @@
 
 Talks to https://INSTANCE.odoo.localhost through nginx, verifying TLS
 against the system CA bundle (security.pki), so every call also proves
-the CA trust. The database is always odoo-INSTANCE.
+the CA trust. The database is always odoo-INSTANCE. ODOO_PROBE_DOMAIN
+replaces odoo.localhost (a LAN name), ODOO_PROBE_HOST the whole host (a
+public domain), ODOO_PROBE_CAFILE the CA bundle (a downloaded CA).
 
   INSTANCE login PASSWORD              exit 0 if admin logs in with PASSWORD
   INSTANCE demo PASSWORD               exit 0 if demo data is installed
@@ -13,21 +15,27 @@ the CA trust. The database is always odoo-INSTANCE.
   INSTANCE attachment-create PASSWORD  store a file, print its filestore path
   INSTANCE db-list                     exit 0 if the database service lists databases
   INSTANCE db-drop MASTER_PASSWORD     exit 0 if the database service drops the database
+  INSTANCE base-url PASSWORD URL       exit 0 if web.base.url is URL and frozen
 """
 
 import base64
 import json
+import os
 import ssl
 import sys
 import urllib.request
 import uuid
 
-CONTEXT = ssl.create_default_context(cafile="/etc/ssl/certs/ca-certificates.crt")
+DOMAIN = os.environ.get("ODOO_PROBE_DOMAIN", "odoo.localhost")
+CONTEXT = ssl.create_default_context(
+    cafile=os.environ.get("ODOO_PROBE_CAFILE", "/etc/ssl/certs/ca-certificates.crt")
+)
 
 
 class Instance:
     def __init__(self, name):
-        self.url = f"https://{name}.odoo.localhost/jsonrpc"
+        host = os.environ.get("ODOO_PROBE_HOST") or f"{name}.{DOMAIN}"
+        self.url = f"https://{host}/jsonrpc"
         self.db = f"odoo-{name}"
 
     def call(self, service, method, *args):
@@ -99,6 +107,20 @@ def main():
         )
         assert record["store_fname"], f"attachment not in the filestore: {record}"
         print(f"/var/lib/private/{odoo.db}/data/filestore/{odoo.db}/{record['store_fname']}")
+    elif action == "base-url":
+        password, url = args
+        params = {
+            p["key"]: p["value"]
+            for p in odoo.execute(
+                password,
+                "ir.config_parameter",
+                "search_read",
+                [["key", "in", ["web.base.url", "web.base.url.freeze"]]],
+                fields=["key", "value"],
+            )
+        }
+        assert params.get("web.base.url") == url, params
+        assert params.get("web.base.url.freeze") == "True", params
     elif action == "db-list":
         odoo.call("db", "list")
     elif action == "db-drop":

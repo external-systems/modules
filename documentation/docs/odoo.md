@@ -5,7 +5,10 @@ machine, for testing only. Each instance has its own PostgreSQL database
 and state, is served over trusted HTTPS at
 `https://<name>.odoo.localhost`, and can be reset to a freshly created
 database (with or without demo data) by one command. Nothing is
-reachable from other machines.
+reachable from other machines unless an instance asks for it: see
+[Reaching Odoo from other machines](odoo-access.md) for the LAN (a
+Windows laptop, say) and the internet (a real domain with Let's
+Encrypt).
 
 ## Enabling and adding instances
 
@@ -35,13 +38,15 @@ instance shares one certificate (for `odoo.localhost` and
 | `addons` | `[]` | extra addon packages |
 | `package` | `hostSpec.services.odoo.package` (`pkgs.odoo19`) | Odoo for this instance |
 | `port` | automatic | HTTP port on 127.0.0.1; the websocket port is `port + 1` |
+| `expose.lan` | `false` | also at `https://<name>.odoo.<host>.home.arpa` for the LAN ([details](odoo-access.md)) |
+| `expose.public.enable`, `.domain` | off | also at `https://<domain>` for the internet, Let's Encrypt ([details](odoo-access.md)) |
 
 Instance names are DNS labels: lowercase letters, digits and hyphens,
 starting with a letter. Automatic ports follow the name order from
 `basePort` (18069): with `blank` and `demo`, blank gets 18069/18070 and
 demo 18071/18072. Other machine-wide options: `baseDomain`
-(`odoo.localhost`), `package`, `trustCertificate`, and the secret
-options below.
+(`odoo.localhost`), `package`, `trustCertificate`, `lan.*` and
+`acme.email` for exposure, and the secret options below.
 
 ## What each instance gets
 
@@ -74,8 +79,9 @@ reboots; a reset sets the provisioned one again.
 ## HTTPS in Firefox
 
 A CA made by clan vars (`odoo-local-ca`) signs the certificate. It is
-name-constrained to `odoo.localhost` and its subdomains, so trusting it
-cannot vouch for any other site, and its private key never leaves the
+name-constrained to `odoo.localhost`, the LAN domain
+(`odoo.<host>.home.arpa`) and their subdomains, so trusting it cannot
+vouch for any other site, and its private key never leaves the
 machine that ran `clan vars generate`. With `trustCertificate = true`
 (the default) the CA is trusted system wide and installed into every
 Firefox profile through the enterprise policy
@@ -130,9 +136,11 @@ database and role `odoo`, state `/var/lib/private/odoo`, at
 `https://odoo.localhost`. That data is not migrated. To wipe it (for
 example on beelink):
 
-1. Regenerate the certificate, which now also covers
-   `*.odoo.localhost`. The CA does not change, so Firefox keeps trusting
-   it.
+1. Regenerate the CA and the certificate: they now also cover
+   `*.odoo.localhost` and the LAN domain (`odoo.beelink.home.arpa`).
+   Firefox on beelink picks up the new CA through its policy at the
+   next start; LAN clients import the new `ca.crt`
+   ([Reaching Odoo from other machines](odoo-access.md)).
 
     ```sh
     clan vars generate beelink
@@ -167,4 +175,5 @@ builder):
 | --- | --- |
 | `odoo` | two instances (demo and no demo) and a machine with none: trusted HTTPS, index page, logins, isolation between instances, websocket, master password outside the store, loopback only, password changes surviving restarts, reboots not re-initialising |
 | `odoo-reset` | `odoo-reset` for one and all instances (records, files and UI password changes gone, demo data as configured, other instances untouched), `odoo-purge`, and every refusal |
+| `odoo-lan`, `odoo-public` | exposure: see [Reaching Odoo from other machines](odoo-access.md) |
 | `odoo-firefox` | a home-manager Firefox loads an instance without a certificate error, and does not get past TLS on an untrusted control site |
