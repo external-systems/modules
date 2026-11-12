@@ -8,19 +8,31 @@
   masterPassword = "vm-test-master-password";
 
   # hostSpec.services.odoo with the fakes, the probe and its tools. A test
-  # adds instances.
-  module = {pkgs, ...}: let
+  # adds instances. The fakes cover the node's own LAN domain
+  # (odoo.<hostName>.home.arpa); evil.crt is signed by the same CA for a
+  # name outside its constraints, which clients must reject.
+  module = {
+    config,
+    pkgs,
+    ...
+  }: let
+    inherit (config.hostSpec.services.odoo.lan) domain;
     tls = pkgs.runCommand "odoo-vm-test-tls" {nativeBuildInputs = [pkgs.openssl];} ''
       mkdir -p $out
       openssl req -x509 -newkey rsa:2048 -nodes \
         -keyout ca.key -out $out/ca.crt -days 30 -subj "/CN=odoo-vm-test-ca" \
         -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
         -addext "keyUsage=critical,keyCertSign,cRLSign" \
-        -addext "nameConstraints=critical,permitted;DNS:${baseDomain}"
-      openssl req -newkey rsa:2048 -nodes -keyout $out/tls.key -out tls.csr -subj "/CN=${baseDomain}"
-      printf 'subjectAltName=DNS:${baseDomain},DNS:*.${baseDomain}\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\n' > ext
-      openssl x509 -req -in tls.csr -CA $out/ca.crt -CAkey ca.key -CAcreateserial \
-        -out $out/tls.crt -days 30 -sha256 -extfile ext
+        -addext "nameConstraints=critical,permitted;DNS:${baseDomain},permitted;DNS:${domain}"
+      sign() {
+        openssl req -newkey rsa:2048 -nodes -keyout "$1.key" -out "$1.csr" -subj "/CN=$2"
+        printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\n' "$3" > "$1.ext"
+        openssl x509 -req -in "$1.csr" -CA $out/ca.crt -CAkey ca.key -CAcreateserial \
+          -out "$1.crt" -days 30 -sha256 -extfile "$1.ext"
+      }
+      sign tls ${baseDomain} "DNS:${baseDomain},DNS:*.${baseDomain},DNS:${domain},DNS:*.${domain}"
+      sign evil evil.example.com "DNS:evil.example.com"
+      cp tls.crt tls.key evil.crt $out/
     '';
   in {
     hostSpec.services.odoo = {
@@ -35,7 +47,18 @@
     };
 
     environment = {
-      systemPackages = [pkgs.curl pkgs.python3];
+      systemPackages = [pkgs.curl pkgs.python3 pkgs.openssl];
+      etc = {
+        "odoo-probe.py".source = ./_odoo-probe.py;
+        "odoo-test-tls".source = tls;
+      };
+    };
+  };
+
+  # A LAN client: the probe and its tools, no Odoo.
+  clientModule = {pkgs, ...}: {
+    environment = {
+      systemPackages = [pkgs.curl pkgs.python3 pkgs.openssl];
       etc."odoo-probe.py".source = ./_odoo-probe.py;
     };
   };
@@ -48,13 +71,21 @@
     admin_password = "${adminPassword}"
     master_password = "${masterPassword}"
 
-    def probe(node, instance, *args):
-        cmd = " ".join(shlex.quote(a) for a in ("python3", "/etc/odoo-probe.py", instance, *args))
-        return node.succeed(cmd).strip()
+    def probe_cmd(instance, args, domain=None, cafile=None, host=None):
+        env = ""
+        if domain:
+            env += f"ODOO_PROBE_DOMAIN={shlex.quote(domain)} "
+        if host:
+            env += f"ODOO_PROBE_HOST={shlex.quote(host)} "
+        if cafile:
+            env += f"ODOO_PROBE_CAFILE={shlex.quote(cafile)} "
+        return env + " ".join(shlex.quote(a) for a in ("python3", "/etc/odoo-probe.py", instance, *args))
 
-    def probe_fails(node, instance, *args):
-        cmd = " ".join(shlex.quote(a) for a in ("python3", "/etc/odoo-probe.py", instance, *args))
-        node.fail(cmd)
+    def probe(node, instance, *args, domain=None, cafile=None, host=None):
+        return node.succeed(probe_cmd(instance, args, domain, cafile, host)).strip()
+
+    def probe_fails(node, instance, *args, domain=None, cafile=None, host=None):
+        node.fail(probe_cmd(instance, args, domain, cafile, host))
 
     def wait_ready(node, instances):
         node.wait_for_unit("postgresql.service", timeout=300)

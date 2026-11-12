@@ -8,7 +8,12 @@
       site_name = "modules";
       nav = [
         {Home = "index.md";}
-        {Odoo = "odoo.md";}
+        {
+          Odoo = [
+            "odoo.md"
+            "odoo-access.md"
+          ];
+        }
       ];
     };
   };

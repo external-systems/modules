@@ -6,10 +6,20 @@ _: {
   # https://<name>.odoo.localhost), reachable from this machine only.
   # https://<baseDomain> is an index page linking every instance.
   #
-  # Local only: every Odoo binds 127.0.0.1 (HTTP port and gevent websocket
-  # port = port + 1), nginx listens on loopback only, no firewall port is
-  # opened and PostgreSQL keeps its default (unix socket, peer auth, no
-  # TCP listener, no database password).
+  # Local by default: every Odoo binds 127.0.0.1 (HTTP port and gevent
+  # websocket port = port + 1), nginx listens on loopback only, no firewall
+  # port is opened and PostgreSQL keeps its default (unix socket, peer
+  # auth, no TCP listener, no database password). Each instance can add:
+  #   expose.lan     https://<name>.<lan.domain> (odoo.<host>.home.arpa) on
+  #                  lan.addresses, 80/443 open on lan.interfaces, nginx
+  #                  allow-list lan.allowedClients, the local CA's
+  #                  certificate; clients use hosts-file lines from
+  #                  odoo-hosts and import http://<lan.domain>/ca.crt
+  #   expose.public  https://<domain> for the internet, Let's Encrypt
+  #                  (HTTP-01), 80/443 open, database manager 404, login
+  #                  rate limit, HSTS, web.base.url frozen at the domain
+  # Names nginx does not serve on a LAN or public address get their TLS
+  # handshake refused (catch-all default servers).
   #
   # Not the nixpkgs services.odoo: that module runs exactly one instance
   # (one unit, one database named odoo, ports 8069/8072 fixed in its nginx
@@ -26,6 +36,7 @@ _: {
   #                              or without demo data, per instance)
   # odoo-purge [NAME...]         list or delete the database, role and
   #                              state of instances no longer configured
+  # odoo-hosts                   hosts-file lines for LAN clients
   #
   # Package: pkgs.odoo19 as fixed by external-systems/pkgs overlays.odoo
   # (part of overlays.default). Plain nixpkgs' odoo19 refuses to evaluate
@@ -33,10 +44,11 @@ _: {
   #
   # Secrets (clan vars generators, provisionSecrets = true), shared by
   # every instance so adding one never needs `clan vars generate`:
-  #   odoo-local-ca   CA for HTTPS; name-constrained to baseDomain and its
-  #                   subdomains, ca.key never deployed, ca.crt trusted
-  #                   system wide and by Firefox
-  #   odoo-tls        one nginx certificate for baseDomain and *.baseDomain
+  #   odoo-local-ca   CA for HTTPS; name-constrained to baseDomain,
+  #                   lan.domain and their subdomains, ca.key never
+  #                   deployed, ca.crt trusted system wide and by Firefox
+  #   odoo-tls        one nginx certificate for baseDomain, lan.domain and
+  #                   their wildcards
   #   odoo-passwords  admin-password (web login of user "admin") and
   #                   master-password (Odoo's admin_passwd)
   # Run `clan vars generate <machine>` after enabling. The web login is
@@ -70,17 +82,47 @@ _: {
 
     caFile = fileFor "caFile" "odoo-local-ca" "ca.crt";
     tlsCertFile = fileFor "tlsCertFile" "odoo-tls" "tls.crt";
-    tlsKeyCredential = "/run/credentials/nginx.service/odoo-tls.key";
+    # Read by nginx itself (root:nginx 0440 as a clan var), not as a systemd
+    # credential: `systemctl reload nginx` runs `nginx -t` as the nginx
+    # user, which cannot read the unit's credentials, so every reload (a
+    # deploy, an ACME renewal) failed and kept the old certificates.
+    tlsKeyFile = fileFor "tlsKeyFile" "odoo-tls" "tls.key";
     credentials = [
       "admin-password:${fileFor "adminPasswordFile" "odoo-passwords" "admin-password"}"
       "master-password:${fileFor "masterPasswordFile" "odoo-passwords" "master-password"}"
     ];
 
     loopback = ["127.0.0.1"] ++ lib.optional config.networking.enableIPv6 "[::1]";
+    # nginx wants IPv6 listen addresses in brackets.
+    bracket = address:
+      if lib.hasInfix ":" address
+      then "[${address}]"
+      else address;
+    lanListen = map bracket cfg.lan.addresses;
+    # Public vhosts also list the LAN and loopback addresses: nginx picks a
+    # server by the address a connection arrived on first, and a router
+    # forwards to the LAN address.
+    wildcard = ["0.0.0.0"] ++ lib.optional config.networking.enableIPv6 "[::]";
+    publicListen = wildcard ++ lanListen ++ loopback;
 
     # Instances in name order; the index fixes the automatic port.
     instances = lib.imap0 mkInstance (lib.attrNames cfg.instances);
     hasInstances = instances != [];
+    lanInstances = lib.filter (i: i.lan) instances;
+    publicInstances = lib.filter (i: i.publicDomain != null) instances;
+    hasLan = lanInstances != [];
+    hasPublic = publicInstances != [];
+
+    # LAN vhosts answer allowedClients only (all clients when empty).
+    lanAccess = lib.optionalString (cfg.lan.allowedClients != []) ''
+      ${lib.concatMapStrings (client: "allow ${client};\n") cfg.lan.allowedClients}deny all;
+    '';
+
+    proxyTimeouts = ''
+      proxy_read_timeout 720s;
+      proxy_connect_timeout 720s;
+      proxy_send_timeout 720s;
+    '';
 
     mkInstance = index: name: let
       icfg = cfg.instances.${name};
@@ -93,6 +135,11 @@ _: {
         else cfg.basePort + 2 * index;
       geventPort = httpPort + 1;
       host = "${name}.${cfg.baseDomain}";
+      lanHost = "${name}.${cfg.lan.domain}";
+      publicDomain =
+        if icfg.expose.public.enable
+        then icfg.expose.public.domain
+        else null;
 
       storeConfig = iniFormat.generate "${unit}.cfg" {
         options =
@@ -162,10 +209,57 @@ _: {
           echo "$want" > "$marker"
         fi
       '';
+
+      # A public instance builds its links (mails, reports, portal) from
+      # the public URL, whichever name the admin logged in through. The
+      # marker holds the URL last applied; odoo-reset deletes it.
+      publicUrl = "https://${publicDomain}";
+      setBaseUrl = pkgs.writeText "${unit}-set-base-url.py" ''
+        params = env["ir.config_parameter"].sudo()
+        params.set_param("web.base.url", "${publicUrl}")
+        params.set_param("web.base.url.freeze", "True")
+        env.cr.commit()
+      '';
+      applyBaseUrl = pkgs.writeShellScript "${unit}-base-url" ''
+        set -euo pipefail
+        marker=${dataDir}/.base-url
+        if [ "$(cat "$marker" 2>/dev/null || true)" != "${publicUrl}" ]; then
+          echo "pre-start: freezing web.base.url at ${publicUrl}"
+          ${icfg.package}/bin/odoo shell --database=${unit} --no-http < ${setBaseUrl}
+          echo "${publicUrl}" > "$marker"
+        fi
+      '';
+
+      locations = {
+        "/" = {
+          proxyPass = "http://127.0.0.1:${toString httpPort}";
+          recommendedProxySettings = true;
+          extraConfig = "proxy_redirect off;";
+        };
+        "/websocket" = {
+          proxyPass = "http://127.0.0.1:${toString geventPort}";
+          proxyWebsockets = true;
+          recommendedProxySettings = true;
+        };
+      };
+
+      # Loopback and LAN: the same proxy behind the shared certificate.
+      ownCertificate = {
+        forceSSL = true;
+        sslCertificate = tlsCertFile;
+        sslCertificateKey = tlsKeyFile;
+        inherit locations;
+      };
     in {
-      inherit name unit stateDir dataDir httpPort geventPort host;
+      inherit name unit stateDir dataDir httpPort geventPort host lanHost publicDomain;
       inherit (icfg) demoData;
+      inherit (icfg.expose) lan;
       url = "https://${host}";
+      lanUrl = "https://${lanHost}";
+      publicUrl =
+        if publicDomain != null
+        then publicUrl
+        else null;
 
       service = {
         description = "Odoo instance ${name} (https://${host})";
@@ -177,7 +271,9 @@ _: {
         environment.ODOO_RC = runtimeConfig;
         serviceConfig = {
           ExecStart = "${icfg.package}/bin/odoo";
-          ExecStartPre = ["${writeRuntimeConfig}" "${initDatabase}" "${applyAdminPassword}"];
+          ExecStartPre =
+            ["${writeRuntimeConfig}" "${initDatabase}" "${applyAdminPassword}"]
+            ++ lib.optional (publicDomain != null) "${applyBaseUrl}";
           # A static user (users.users below) with DynamicUser's sandbox,
           # as nixpkgs services.odoo does: state lands in /var/lib/private.
           DynamicUser = true;
@@ -193,36 +289,109 @@ _: {
         };
       };
 
-      virtualHost = {
-        forceSSL = true;
-        listenAddresses = loopback;
-        sslCertificate = tlsCertFile;
-        sslCertificateKey = tlsKeyCredential;
-        extraConfig = ''
-          proxy_read_timeout 720s;
-          proxy_connect_timeout 720s;
-          proxy_send_timeout 720s;
-        '';
-        locations = {
-          "/" = {
-            proxyPass = "http://127.0.0.1:${toString httpPort}";
-            recommendedProxySettings = true;
-            extraConfig = "proxy_redirect off;";
-          };
-          "/websocket" = {
-            proxyPass = "http://127.0.0.1:${toString geventPort}";
-            proxyWebsockets = true;
-            recommendedProxySettings = true;
-          };
+      virtualHost =
+        ownCertificate
+        // {
+          listenAddresses = loopback;
+          extraConfig = proxyTimeouts;
         };
+
+      lanVirtualHost =
+        ownCertificate
+        // {
+          listenAddresses = lanListen;
+          extraConfig = proxyTimeouts + lanAccess;
+        };
+
+      # Let's Encrypt (HTTP-01) and hardening for the internet: no database
+      # manager, a login rate limit, HSTS.
+      publicVirtualHost = {
+        forceSSL = true;
+        enableACME = true;
+        listenAddresses = publicListen;
+        extraConfig =
+          proxyTimeouts
+          + ''
+            add_header Strict-Transport-Security "max-age=31536000" always;
+          '';
+        locations =
+          locations
+          // {
+            "~ ^/web/database".return = "404";
+            "= /web/login" =
+              locations."/"
+              // {
+                extraConfig = ''
+                  proxy_redirect off;
+                  limit_req zone=odoo_login burst=5 nodelay;
+                  limit_req_status 429;
+                '';
+              };
+          };
       };
     };
 
     # What odoo-reset and odoo-purge know about the configured instances.
     instancesJson = pkgs.writeText "odoo-instances.json" (builtins.toJSON (map (i: {
-        inherit (i) name unit stateDir httpPort url demoData;
+        inherit (i) name unit stateDir httpPort url demoData lan publicUrl;
       })
       instances));
+
+    # The hosts-file lines a LAN client needs: one per exposed name and
+    # LAN address (hosts files have no wildcards).
+    hostsLines = lib.concatMapStrings (address:
+      lib.concatMapStrings (name: "${address}  ${name}\n")
+      ([cfg.lan.domain] ++ map (i: i.lanHost) lanInstances))
+    cfg.lan.addresses;
+
+    odooHosts = pkgs.writeShellScriptBin "odoo-hosts" ''
+      # The lines to add to a LAN client's hosts file (Windows:
+      # C:\Windows\System32\drivers\etc\hosts) to reach the LAN-exposed
+      # Odoo instances of this machine.
+      cat <<'EOF'
+      ${
+        if hasLan
+        then hostsLines
+        else "# No Odoo instance on this machine is exposed to the LAN.\n"
+      }EOF
+    '';
+
+    lanIndexPage = pkgs.writeTextDir "index.html" ''
+      <!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>Odoo on ${config.networking.hostName}</title>
+          <style>
+            body { font-family: Georgia, serif; background: #1f1e1d; color: #faf9f5; max-width: 44rem; margin: 3rem auto; padding: 0 1rem; }
+            a { color: #e8a48a; }
+            li { margin: 0.5rem 0; }
+            pre { background: #2b2a27; padding: 0.75rem; overflow-x: auto; }
+            .muted { color: #b0aea5; }
+          </style>
+        </head>
+        <body>
+          <h1>Odoo on ${config.networking.hostName}</h1>
+          <ul>
+            ${lib.concatMapStringsSep "\n" (i: ''<li><a href="${i.lanUrl}/">${i.name}</a> <span class="muted">${
+          if i.demoData
+          then "demo data"
+          else "no demo data"
+        }</span></li>'')
+      lanInstances}
+          </ul>
+          <h2>Setting up a client</h2>
+          <p>1. Add these lines to the hosts file (Windows, as administrator:
+          <code>C:\Windows\System32\drivers\etc\hosts</code>, then
+          <code>ipconfig /flushdns</code>):</p>
+          <pre>${hostsLines}</pre>
+          <p>2. Trust the CA once: <a href="/ca.crt">ca.crt</a> (download it over
+          <code>http://${cfg.lan.domain}/ca.crt</code>). Windows, PowerShell as
+          administrator: <code>Import-Certificate -FilePath ca.crt -CertStoreLocation Cert:\LocalMachine\Root</code>.
+          It is only valid for names under ${cfg.baseDomain} and ${cfg.lan.domain}.</p>
+        </body>
+      </html>
+    '';
 
     indexPage = pkgs.writeTextDir "index.html" ''
       <!doctype html>
@@ -247,7 +416,7 @@ _: {
               if i.demoData
               then "demo data"
               else "no demo data"
-            }</span></li>'')
+            }${lib.optionalString i.lan ", LAN: ${i.lanUrl}"}${lib.optionalString (i.publicUrl != null) ", public: ${i.publicUrl}"}</span></li>'')
           instances}
           </ul>''
         else "<p>No instances configured.</p>"
@@ -293,11 +462,12 @@ _: {
             echo "No Odoo instances configured."
             return
           fi
-          printf '%-16s %-40s %-14s %s\n' NAME URL DATA STATE
-          jq -r '.[] | [.name, .url, (if .demoData then "demo" else "no-demo" end), .unit] | @tsv' "$instances" |
-            while IFS=$'\t' read -r name url data unit; do
+          printf '%-16s %-40s %-9s %-10s %s\n' NAME URL DATA STATE EXPOSED
+          jq -r '.[] | [.name, .url, (if .demoData then "demo" else "no-demo" end), .unit,
+              ([if .lan then "lan" else empty end, (.publicUrl // empty)] | if length == 0 then "local only" else join(" ") end)] | @tsv' "$instances" |
+            while IFS=$'\t' read -r name url data unit exposed; do
               state=$(systemctl is-active "$unit.service" || true)
-              printf '%-16s %-40s %-14s %s\n' "$name" "$url" "$data" "$state"
+              printf '%-16s %-40s %-9s %-10s %s\n' "$name" "$url" "$data" "$state" "$exposed"
             done
         }
 
@@ -511,6 +681,53 @@ _: {
         '';
       };
 
+      lan = {
+        domain = lib.mkOption {
+          type = lib.types.str;
+          default = "odoo.${config.networking.hostName}.home.arpa";
+          defaultText = lib.literalExpression ''"odoo.''${config.networking.hostName}.home.arpa"'';
+          description = ''
+            LAN-exposed instance NAME is served at https://NAME.<lan.domain>;
+            https://<lan.domain> lists them with the hosts-file lines and the
+            CA (http://<lan.domain>/ca.crt). home.arpa is reserved for home
+            networks (RFC 8375). *.localhost cannot work from other
+            machines: browsers send it to the client itself.
+          '';
+        };
+        addresses = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [];
+          description = ''
+            This machine's LAN addresses (IPv4 or IPv6, no prefix length)
+            nginx listens on for LAN-exposed instances. From the values
+            flake, never a literal here.
+          '';
+        };
+        interfaces = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [];
+          description = "Interfaces the firewall opens 80 and 443 on while an instance sets expose.lan.";
+        };
+        allowedClients = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [];
+          description = ''
+            Addresses or CIDRs (nginx allow) that may use the LAN names;
+            everyone else gets 403. Empty allows every client that reaches
+            the interfaces.
+          '';
+        };
+      };
+
+      acme.email = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Let's Encrypt account email, needed once an instance sets
+          expose.public (unless security.acme.defaults.email is set).
+        '';
+      };
+
       instances = lib.mkOption {
         default = {};
         example = lib.literalExpression ''
@@ -567,6 +784,28 @@ _: {
                 null picks one from basePort.
               '';
             };
+
+            expose = {
+              lan = lib.mkEnableOption ''
+                https://NAME.<lan.domain> for other machines on the LAN
+                (lan.addresses, lan.interfaces, lan.allowedClients), with
+                the local CA's certificate'';
+
+              public = {
+                enable = lib.mkEnableOption ''
+                  https://<domain> for the internet, with a Let's Encrypt
+                  certificate (HTTP-01: the domain's A/AAAA records point at
+                  this machine and port 80 reaches it). The database manager
+                  answers 404, /web/login is rate limited and web.base.url is
+                  frozen at the public URL'';
+                domain = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  example = "erp.example.com";
+                  description = "Public domain of this instance. From the values flake, never a literal here.";
+                };
+              };
+            };
           };
         });
       };
@@ -605,7 +844,7 @@ _: {
       tlsKeyFile = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "External private key PEM for tlsCertFile. Required when provisionSecrets = false.";
+        description = "External private key PEM for tlsCertFile, readable by the nginx user. Required when provisionSecrets = false.";
       };
       adminPasswordFile = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -623,6 +862,8 @@ _: {
       {
         assertions = let
           ports = lib.concatMap (i: [i.httpPort i.geventPort]) instances;
+          publicDomains = map (i: i.publicDomain) publicInstances;
+          ownDomain = domain: domain == cfg.baseDomain || lib.hasSuffix ".${cfg.baseDomain}" domain || domain == cfg.lan.domain || lib.hasSuffix ".${cfg.lan.domain}" domain;
         in [
           {
             assertion = lib.all (name: builtins.match "[a-z][a-z0-9-]*" name != null) (lib.attrNames cfg.instances);
@@ -636,47 +877,75 @@ _: {
             assertion = lib.all (i: i.geventPort <= 65535) instances;
             message = "hostSpec.services.odoo.instances: port + 1 must be a valid port";
           }
+          {
+            assertion = !hasLan || (cfg.lan.addresses != [] && cfg.lan.interfaces != []);
+            message = "hostSpec.services.odoo.lan: addresses and interfaces must be set when an instance sets expose.lan";
+          }
+          {
+            assertion = lib.all (i: i.publicDomain != null) (lib.filter (i: cfg.instances.${i.name}.expose.public.enable) instances);
+            message = "hostSpec.services.odoo.instances.<name>.expose.public: domain must be set when enable = true";
+          }
+          {
+            assertion = lib.length publicDomains == lib.length (lib.unique publicDomains);
+            message = "hostSpec.services.odoo.instances: two public instances share a domain";
+          }
+          {
+            assertion = !lib.any ownDomain publicDomains;
+            message = "hostSpec.services.odoo.instances.<name>.expose.public.domain must be a real domain, not under baseDomain or lan.domain";
+          }
+          {
+            assertion = !hasPublic || cfg.acme.email != null || config.security.acme.defaults.email != null;
+            message = "hostSpec.services.odoo.acme.email (or security.acme.defaults.email) must be set when an instance sets expose.public";
+          }
         ];
 
         clan.core.vars.generators = lib.mkIf cfg.provisionSecrets {
           # ca.key is never deployed (deploy = false): it only signs the
           # server certificate during `clan vars generate`. The name
-          # constraint limits the trust security.pki grants this CA to
-          # baseDomain and its subdomains, even if the key leaked.
+          # constraints limit the trust this CA gets (here, and on LAN
+          # clients that import it) to baseDomain, lan.domain and their
+          # subdomains, even if the key leaked.
           odoo-local-ca = {
             files = {
               "ca.crt".secret = false;
               "ca.key".deploy = false;
             };
-            validation.domain = cfg.baseDomain;
+            validation.domains = "${cfg.baseDomain} ${cfg.lan.domain}";
             runtimeInputs = [pkgs.openssl];
             script = ''
               openssl req -x509 -newkey rsa:3072 -nodes \
                 -keyout "$out"/ca.key -out "$out"/ca.crt \
-                -days 3650 -subj "/CN=odoo-local-ca" \
+                -days 3650 -subj "/CN=odoo-local-ca ${config.networking.hostName}" \
                 -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
                 -addext "keyUsage=critical,keyCertSign,cRLSign" \
-                -addext "nameConstraints=critical,permitted;DNS:${cfg.baseDomain}"
+                -addext "nameConstraints=critical,permitted;DNS:${cfg.baseDomain},permitted;DNS:${cfg.lan.domain}"
             '';
           };
 
-          # One certificate for the index and every instance, so adding an
-          # instance needs no new certificate. nginx reads the key as a
-          # systemd credential, so it stays root-only.
+          # One certificate for every local and LAN name, so adding or
+          # exposing an instance needs no new certificate. Only root and
+          # nginx can read the key. Public instances get Let's Encrypt
+          # certificates instead.
           odoo-tls = {
             files = {
               "tls.crt".secret = false;
-              "tls.key".restartUnits = ["nginx.service"];
+              "tls.key" = {
+                owner = "root";
+                group = config.services.nginx.group;
+                mode = "0440";
+                restartUnits = ["nginx.service"];
+              };
             };
             dependencies = ["odoo-local-ca"];
-            validation.names = "${cfg.baseDomain} *.${cfg.baseDomain}";
+            validation.names = "${cfg.baseDomain} *.${cfg.baseDomain} ${cfg.lan.domain} *.${cfg.lan.domain}";
             runtimeInputs = [pkgs.openssl];
             script = ''
               work=$(mktemp -d)
               openssl req -newkey rsa:2048 -nodes \
                 -keyout "$out"/tls.key -out "$work/tls.csr" \
                 -subj "/CN=${cfg.baseDomain}"
-              printf 'subjectAltName=DNS:%s,DNS:*.%s\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\n' '${cfg.baseDomain}' '${cfg.baseDomain}' > "$work/ext"
+              printf 'subjectAltName=DNS:%s,DNS:*.%s,DNS:%s,DNS:*.%s\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\n' \
+                '${cfg.baseDomain}' '${cfg.baseDomain}' '${cfg.lan.domain}' '${cfg.lan.domain}' > "$work/ext"
               openssl x509 -req -in "$work/tls.csr" \
                 -CA "$in"/odoo-local-ca/ca.crt -CAkey "$in"/odoo-local-ca/ca.key \
                 -CAcreateserial -out "$out"/tls.crt \
@@ -697,7 +966,7 @@ _: {
           };
         };
 
-        environment.systemPackages = [odooReset odooPurge];
+        environment.systemPackages = [odooReset odooPurge odooHosts];
 
         # On even with no instances, so odoo-purge can drop what removed
         # instances left behind.
@@ -735,13 +1004,7 @@ _: {
           groups = lib.genAttrs (map (i: i.unit) instances) (_: {});
         };
 
-        systemd.services =
-          lib.listToAttrs (map (i: lib.nameValuePair i.unit i.service) instances)
-          // {
-            nginx.serviceConfig.LoadCredential = [
-              "odoo-tls.key:${fileFor "tlsKeyFile" "odoo-tls" "tls.key"}"
-            ];
-          };
+        systemd.services = lib.listToAttrs (map (i: lib.nameValuePair i.unit i.service) instances);
 
         services.nginx = {
           enable = true;
@@ -753,7 +1016,7 @@ _: {
                 forceSSL = true;
                 listenAddresses = loopback;
                 sslCertificate = tlsCertFile;
-                sslCertificateKey = tlsKeyCredential;
+                sslCertificateKey = tlsKeyFile;
                 root = indexPage;
               };
             };
@@ -764,6 +1027,78 @@ _: {
         in
           {"127.0.0.1" = names;}
           // lib.optionalAttrs config.networking.enableIPv6 {"::1" = names;};
+      })
+
+      # LAN: the exposed instances, an index with the CA, and a catch-all
+      # that refuses every other name, on the LAN addresses only; 80/443
+      # open on the LAN interfaces only.
+      (lib.mkIf hasLan {
+        services.nginx.virtualHosts =
+          lib.listToAttrs (map (i: lib.nameValuePair i.lanHost i.lanVirtualHost) lanInstances)
+          // {
+            ${cfg.lan.domain} = {
+              # HTTP too: a new client fetches /ca.crt before it trusts HTTPS.
+              addSSL = true;
+              listenAddresses = lanListen;
+              sslCertificate = tlsCertFile;
+              sslCertificateKey = tlsKeyFile;
+              root = lanIndexPage;
+              extraConfig = lanAccess;
+              locations."= /ca.crt" = {
+                alias = caFile;
+                extraConfig = "default_type application/x-x509-ca-cert;";
+              };
+            };
+            odoo-lan-default = {
+              serverName = "_";
+              default = true;
+              rejectSSL = true;
+              listenAddresses = lanListen;
+              locations."/".return = "444";
+            };
+          };
+
+        # nginx binds lan.addresses, which DHCP (NetworkManager) may not
+        # have assigned yet at boot or after a reconnect; without this
+        # nginx fails to start and takes every vhost down with it.
+        boot.kernel.sysctl = {
+          "net.ipv4.ip_nonlocal_bind" = 1;
+          "net.ipv6.ip_nonlocal_bind" = 1;
+        };
+
+        networking = {
+          firewall.interfaces = lib.genAttrs cfg.lan.interfaces (_: {allowedTCPPorts = [80 443];});
+          # This machine reaches its LAN names too.
+          hosts = lib.genAttrs cfg.lan.addresses (_: [cfg.lan.domain] ++ map (i: i.lanHost) lanInstances);
+        };
+      })
+
+      # Internet: Let's Encrypt over HTTP-01 (port 80 must reach this
+      # machine), a catch-all that refuses unknown names, 80/443 open.
+      (lib.mkIf hasPublic {
+        security.acme = {
+          acceptTerms = true;
+          defaults.email = lib.mkIf (cfg.acme.email != null) (lib.mkDefault cfg.acme.email);
+        };
+
+        services.nginx = {
+          appendHttpConfig = ''
+            limit_req_zone $binary_remote_addr zone=odoo_login:10m rate=10r/m;
+          '';
+          virtualHosts =
+            lib.listToAttrs (map (i: lib.nameValuePair i.publicDomain i.publicVirtualHost) publicInstances)
+            // {
+              odoo-public-default = {
+                serverName = "_";
+                default = true;
+                rejectSSL = true;
+                listenAddresses = wildcard;
+                locations."/".return = "444";
+              };
+            };
+        };
+
+        networking.firewall.allowedTCPPorts = [80 443];
       })
     ]);
   };
