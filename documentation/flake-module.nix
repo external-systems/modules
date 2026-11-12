@@ -6,7 +6,10 @@
     repo = "modules";
     settings = {
       site_name = "modules";
-      nav = [{Home = "index.md";}];
+      nav = [
+        {Home = "index.md";}
+        {Odoo = "odoo.md";}
+      ];
     };
   };
 }

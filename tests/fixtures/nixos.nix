@@ -57,7 +57,16 @@
       nix-ld.enable = true;
       nix.enable = true;
       ollama.enable = true;
-      odoo.enable = true;
+      odoo = {
+        enable = true;
+        instances = {
+          demo = {};
+          blank = {
+            demoData = false;
+            port = 19069;
+          };
+        };
+      };
       onepassword = {
         enable = true;
         polkitPolicyOwners = ["alice"];
