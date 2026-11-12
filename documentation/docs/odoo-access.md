@@ -14,9 +14,8 @@ Each instance can add two more ways in, independently of the others:
 hostSpec.services.odoo = {
   enable = true;
   lan = {
-    addresses = [ /* this machine's LAN IPs, from the values flake */ ];
     interfaces = [ /* e.g. the Wi-Fi or Ethernet interface */ ];
-    allowedClients = [ /* the LAN's CIDRs */ ];
+    allowedClients = [ /* the LAN's CIDRs, from the values flake */ ];
   };
   acme.email = /* only with expose.public */;
   instances = {
@@ -38,8 +37,12 @@ hostSpec.services.odoo = {
 ```
 
 Nothing listens beyond loopback until an instance asks for it. Odoo's
-own ports (18069 and up) stay on 127.0.0.1 in every mode; only nginx
-faces the network.
+own ports (18069 and up) and Mailpit's stay on 127.0.0.1 in every mode;
+only nginx faces the network. It listens on every address, so a new DHCP
+address needs no rebuild or restart; the firewall (`lan.interfaces`) and
+`lan.allowedClients` decide who gets in. With LAN instances, Mailpit is
+on the LAN too (`https://mail.odoo.<host>.home.arpa`;
+`mail.expose.lan = false` keeps it local).
 
 ## Why not `*.odoo.localhost` from the LAN
 
@@ -57,20 +60,21 @@ its line in the hosts file.
 
 ### 1. Get the hosts-file lines
 
-On the Odoo machine:
-
-```sh
-odoo-hosts
-```
+All you need is the Odoo machine's LAN IP address. Open
+`http://<that IP>/hosts.txt` in a browser on the laptop:
 
 ```text
 198.51.100.230  odoo.beelink.home.arpa
-198.51.100.230  blank.odoo.beelink.home.arpa
 198.51.100.230  demo.odoo.beelink.home.arpa
+198.51.100.230  blank.odoo.beelink.home.arpa
+198.51.100.230  mail.odoo.beelink.home.arpa
 ```
 
-The same lines are on the LAN index page. Hosts files have no
-wildcards: one line per name.
+nginx fills in the address you reached it on, so the lines are right
+whatever DHCP handed out. On the Odoo machine, `odoo-hosts` prints the
+same lines for the address the LAN interface has now. Hosts files have
+no wildcards: one line per name. When the machine's address changes,
+fetch the lines again.
 
 ### 2. Add them to the Windows hosts file
 
@@ -95,7 +99,7 @@ instead, for every device on the network at once.
 
 The certificate comes from the machine's own CA. Download it over plain
 HTTP (it is public, and HTTPS is not trusted yet):
-`http://odoo.beelink.home.arpa/ca.crt`. Then, in PowerShell as
+`http://<that IP>/ca.crt` or `http://odoo.beelink.home.arpa/ca.crt`. Then, in PowerShell as
 administrator:
 
 ```powershell
@@ -120,7 +124,9 @@ the machine that ran `clan vars generate`.
 
 ### 4. Open it
 
-`https://odoo.beelink.home.arpa` lists the LAN instances. Log in as
+`https://odoo.beelink.home.arpa` lists the LAN instances and links
+Mailpit (`https://mail.odoo.beelink.home.arpa`), which shows every mail
+the instances sent. Log in as
 `admin` with `clan vars get beelink odoo-passwords/admin-password`.
 
 ### Removing it again
@@ -138,11 +144,16 @@ The same lines go into `/etc/hosts`. Trust the CA with
 
 ### What the LAN side enforces
 
-- nginx listens on `lan.addresses` only, and the firewall opens 80 and
-  443 on `lan.interfaces` only.
-- Clients outside `lan.allowedClients` get 403 for every LAN name.
+- The firewall opens 80 and 443 on `lan.interfaces` only. nginx
+  listens on every address, so set `lan.allowedClients`: without it, any
+  client that reaches the port (over a VPN's trusted interface, say)
+  gets in.
+- Clients outside `lan.allowedClients` get 403 for every LAN name,
+  Mailpit, `hosts.txt` and `ca.crt`.
 - A name that is not a LAN-exposed instance (a local-only one, a
-  `*.odoo.localhost` name, a bare IP) has its TLS handshake refused.
+  `*.odoo.localhost` name, a bare IP over HTTPS) has its TLS handshake
+  refused; plain HTTP to the bare IP answers only `/hosts.txt` and
+  `/ca.crt`.
 - When the CA's names change (first LAN exposure, a new `lan.domain`),
   `clan vars generate` makes a new CA: import the new `ca.crt` on each
   client and delete the old one.
@@ -163,6 +174,10 @@ Before enabling it:
 3. **An ACME contact:** `hostSpec.services.odoo.acme.email` (or
    `security.acme.defaults.email`), from the values flake.
 4. Put the domain in the values flake, not in a module or machine file.
+
+With instances both on the LAN and public, `lan.allowedClients` is
+required: a router forwards internet traffic to the LAN address, and
+the LAN names must not answer it.
 
 What the module adds for a public instance:
 
@@ -192,5 +207,5 @@ odoo-hosts          # LAN hosts-file lines
 
 | Test | Covers |
 | --- | --- |
-| `odoo-lan` | a client pastes the `odoo-hosts` lines, downloads `ca.crt` over HTTP and uses two LAN instances (logins, demo data, websocket, index); a local-only instance is unreachable under any name; Odoo ports closed; a client outside `allowedClients` gets 403; the CA rejects a certificate for another domain |
+| `odoo-lan` | a client that knows only the server's IP fetches `hosts.txt` and `ca.crt` over HTTP and uses two LAN instances and Mailpit (logins, demo data, websocket, index); a local-only instance is unreachable under any name; Odoo ports closed; a client outside `allowedClients` gets 403; the CA rejects a certificate for another domain; a new DHCP address works without a rebuild or restart |
 | `odoo-public` | Let's Encrypt-style issuance over HTTP-01 from pebble; an internet client logs in at the public domain; 404 for the database manager, HSTS, frozen `web.base.url`, login rate limit; a local-only instance is unreachable |

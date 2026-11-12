@@ -101,6 +101,9 @@ in {
         internet.fail(f"curl -sk --resolve shop.odoo.localhost:443:{server_ip} https://shop.odoo.localhost/web/login")
         # No SNI or an unknown one: the handshake is refused.
         internet.fail(f"curl -sk https://{server_ip}/")
+        # No LAN exposure: the bare IP offers no hosts.txt or CA.
+        internet.fail(f"curl -sf http://{server_ip}/hosts.txt")
+        internet.fail(f"curl -sf http://{server_ip}/ca.crt")
         for port in range(18069, 18073):
             internet.fail(f"curl -s --connect-timeout 3 http://{server_ip}:{port}/")
         server.succeed("curl -sf https://intern.odoo.localhost/web/login >/dev/null")

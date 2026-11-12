@@ -1,11 +1,12 @@
 # expose.lan, the Windows-laptop path on a Linux client: the server
 # exposes demo (demo data) and blank (none) to the LAN and keeps private
-# local only. The client does what a Windows user does: pastes the
-# odoo-hosts lines into its hosts file, downloads the CA over HTTP and
-# trusts it, then uses both instances. private stays unreachable under
-# any name, the Odoo ports stay closed, a stranger outside allowedClients
-# gets 403, the CA cannot vouch for names outside its constraints, and
-# nginx still starts while the LAN address is missing.
+# local only. The client does what a Windows user does: knowing only the
+# server's IP, it fetches http://<IP>/hosts.txt into its hosts file and
+# http://<IP>/ca.crt into its trust store, then uses both instances and
+# Mailpit. private stays unreachable under any name, the Odoo ports stay
+# closed, a stranger outside allowedClients gets 403, the CA cannot vouch
+# for names outside its constraints, and nginx does not depend on the LAN
+# address (DHCP may change it).
 {inputs, ...}: let
   common = import ./_odoo-common.nix {inherit inputs;};
 in {
@@ -14,7 +15,6 @@ in {
       imports = [common.module];
       hostSpec.services.odoo = {
         lan = {
-          addresses = [nodes.server.networking.primaryIPAddress];
           interfaces = ["eth1"];
           allowedClients = map (n: "${nodes.${n}.networking.primaryIPAddress}/32") ["server" "client"];
         };
@@ -52,32 +52,40 @@ in {
 
     server_ip = "${nodes.server.networking.primaryIPAddress}"
     lan = "odoo.server.home.arpa"
+    names = (lan, f"demo.{lan}", f"blank.{lan}", f"mail.{lan}")
     ca = "/tmp/odoo-ca.crt"
 
     start_all()
     wait_ready(server, ["demo", "blank", "private"])
     server.wait_for_open_port(443, server_ip, timeout=300)
 
-    with subtest("odoo-hosts prints one line per LAN name"):
+    with subtest("odoo-hosts prints the current address for every LAN name"):
         hosts = server.succeed("odoo-hosts")
-        for name in (lan, f"demo.{lan}", f"blank.{lan}"):
+        for name in names:
             assert f"{server_ip}  {name}\n" in hosts, hosts
         assert "private" not in hosts, hosts
         listing = server.succeed("odoo-reset --list")
         assert "local only" in listing and "lan" in listing, listing
 
-    with subtest("a client adds the lines and downloads the CA over HTTP"):
+    with subtest("a client knowing only the IP bootstraps itself over HTTP"):
+        served = client.succeed(f"curl -sf http://{server_ip}/hosts.txt")
+        assert served == hosts, f"hosts.txt {served!r} != odoo-hosts {hosts!r}"
         for node in (client, stranger):
             # /etc/hosts is a store symlink; a user edits a real file.
             node.succeed('cp --remove-destination "$(readlink -f /etc/hosts)" /etc/hosts')
             node.succeed(f"cat >> /etc/hosts <<'EOF'\n{hosts}{server_ip}  private.{lan}\nEOF")
         # Untrusted until the CA is imported.
         client.fail(f"curl -sf https://demo.{lan}/web/login")
-        client.succeed(f"curl -sf http://{lan}/ca.crt -o {ca}")
-        served = client.succeed(f"sha256sum < {ca}")
-        assert served == server.succeed("sha256sum < /etc/odoo-test-tls/ca.crt"), "served CA differs"
+        client.succeed(f"curl -sf http://{server_ip}/ca.crt -o {ca}")
+        assert client.succeed(f"sha256sum < {ca}") == server.succeed("sha256sum < /etc/odoo-test-tls/ca.crt"), "served CA differs"
+        assert client.succeed(f"curl -sf http://{lan}/ca.crt | sha256sum") == client.succeed(f"sha256sum < {ca}")
         content_type = client.succeed(f"curl -sf -o /dev/null -w '%{{content_type}}' http://{lan}/ca.crt")
         assert content_type == "application/x-x509-ca-cert", content_type
+        # Anything else on the bare IP: closed.
+        client.fail(f"curl -sf http://{server_ip}/")
+
+    with subtest("Mailpit is on the LAN too"):
+        client.succeed(f"curl -sf --cacert {ca} https://mail.{lan}/ >/dev/null")
 
     with subtest("with the CA, both LAN instances work from the client"):
         for name in ("demo", "blank"):
@@ -111,7 +119,10 @@ in {
         for url in (f"https://demo.{lan}/web/login", f"https://{lan}/"):
             code = stranger.succeed(f"curl -sk -o /dev/null -w '%{{http_code}}' {url}").strip()
             assert code == "403", f"{url}: {code}"
-        code = stranger.succeed(f"curl -s -o /dev/null -w '%{{http_code}}' http://{lan}/ca.crt").strip()
+        for url in (f"http://{lan}/ca.crt", f"http://{server_ip}/hosts.txt", f"http://{server_ip}/ca.crt"):
+            code = stranger.succeed(f"curl -s -o /dev/null -w '%{{http_code}}' {url}").strip()
+            assert code == "403", f"{url}: {code}"
+        code = stranger.succeed(f"curl -sk -o /dev/null -w '%{{http_code}}' https://mail.{lan}/").strip()
         assert code == "403", code
 
     with subtest("the CA cannot vouch for names outside its constraints"):
@@ -122,14 +133,21 @@ in {
         server.succeed("curl -sf https://private.odoo.localhost/web/login >/dev/null")
         server.succeed(f"curl -sf https://demo.{lan}/web/login >/dev/null")
 
-    with subtest("nginx starts while the LAN address is missing (DHCP not there yet)"):
+    with subtest("a new DHCP address needs no rebuild or restart"):
         prefix = server.succeed(f"ip -o -4 addr show dev eth1 | grep -o '{server_ip}/[0-9]*'").strip()
-        server.succeed(f"ip addr del {prefix} dev eth1")
+        length = prefix.split("/")[1]
+        new_ip = server_ip.rsplit(".", 1)[0] + ".99"
+        server.succeed(f"ip addr del {prefix} dev eth1 && ip addr add {new_ip}/{length} dev eth1")
+        assert f"{new_ip}  demo.{lan}\n" in server.succeed("odoo-hosts")
+        assert server_ip not in server.succeed("odoo-hosts")
+        client.succeed(f"curl -sf --cacert {ca} --resolve demo.{lan}:443:{new_ip} https://demo.{lan}/web/login >/dev/null")
+        assert client.succeed(f"curl -sf http://{new_ip}/hosts.txt").startswith(f"{new_ip}  ")
+        # nginx starts whatever the address (or none).
+        server.succeed(f"ip addr del {new_ip}/{length} dev eth1")
         server.succeed("systemctl restart nginx.service")
         # nginx is Type=simple: restart returns before it listens.
         server.wait_until_succeeds("curl -sf https://demo.odoo.localhost/web/login >/dev/null", timeout=60)
-        server.succeed("systemctl is-active nginx.service")
-        server.fail("journalctl -u nginx.service -b | grep 'Cannot assign requested address' >/dev/null")
+        server.fail("odoo-hosts")
         server.succeed(f"ip addr add {prefix} dev eth1")
         client.wait_until_succeeds(f"curl -sf --cacert {ca} https://demo.{lan}/web/login >/dev/null", timeout=60)
   '';
