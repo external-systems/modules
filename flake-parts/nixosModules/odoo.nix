@@ -60,7 +60,8 @@ _: {
   # every instance so adding one never needs `clan vars generate`:
   #   odoo-local-ca   CA for HTTPS; name-constrained to baseDomain,
   #                   lan.domain and their subdomains, ca.key never
-  #                   deployed, ca.crt trusted system wide and by Firefox
+  #                   deployed, ca.crt trusted system wide, by Firefox
+  #                   and by Chromium/Chrome
   #   odoo-tls        one nginx certificate for baseDomain, lan.domain and
   #                   their wildcards; key root:nginx 0440
   #   odoo-passwords  admin-password (web login of user "admin") and
@@ -97,6 +98,11 @@ _: {
       else throw "hostSpec.services.odoo: ${settingName} must be set when provisionSecrets = false";
 
     caFile = fileFor "caFile" "odoo-local-ca" "ca.crt";
+    # ca.crt is public (secret = false), so the policy is built from it.
+    chromiumPolicy = pkgs.runCommand "odoo-chromium-ca-policy.json" {nativeBuildInputs = [pkgs.openssl pkgs.jq];} ''
+      der=$(openssl x509 -in ${caFile} -outform DER | base64 -w0)
+      jq -n --arg der "$der" '{CACertificates: [$der]}' > $out
+    '';
     tlsCertFile = fileFor "tlsCertFile" "odoo-tls" "tls.crt";
     # Read by nginx itself (root:nginx 0440 as a clan var), not as a systemd
     # credential: `systemctl reload nginx` runs `nginx -t` as the nginx
@@ -645,7 +651,7 @@ _: {
           Instance NAME is served at https://NAME.<baseDomain>;
           https://<baseDomain> lists the instances, https://mail.<baseDomain>
           is Mailpit. Every name resolves to loopback through
-          networking.hosts (Firefox resolves *.localhost itself). The CA is
+          networking.hosts (Firefox and Chromium resolve *.localhost themselves). The CA is
           name-constrained to this domain, lan.domain and their subdomains.
         '';
       };
@@ -886,9 +892,10 @@ _: {
         type = lib.types.bool;
         default = true;
         description = ''
-          Trust the CA system wide (security.pki) and in Firefox (enterprise
-          policy Certificates.Install), so every instance opens without a
-          warning. Other browsers need the CA imported by hand.
+          Trust the CA system wide (security.pki), in Firefox (enterprise
+          policy Certificates.Install) and in Chromium and Google Chrome
+          (enterprise policy CACertificates), so every instance opens
+          without a warning. Other browsers need the CA imported by hand.
         '';
       };
 
@@ -1079,8 +1086,19 @@ _: {
         programs.firefox.policies = lib.mkIf (cfg.trustCertificate && config.programs.firefox.enable) {
           Certificates.Install = [caFile];
         };
-        environment.etc."firefox/policies/policies.json" = lib.mkIf (cfg.trustCertificate && !config.programs.firefox.enable) {
-          text = builtins.toJSON {policies.Certificates.Install = [caFile];};
+        environment.etc = {
+          "firefox/policies/policies.json" = lib.mkIf (cfg.trustCertificate && !config.programs.firefox.enable) {
+            text = builtins.toJSON {policies.Certificates.Install = [caFile];};
+          };
+          # A nixpkgs Chromium already trusts security.pki: NSS's built-in
+          # roots are p11-kit, which reads /etc/ssl/trust-source. The
+          # CACertificates policy (Chromium 131+, the CA as base64 DER) does
+          # not depend on that NSS, so Google Chrome and other builds trust
+          # the CA too (the odoo-chromium VM test checks each path alone).
+          # Chromium merges every file in its managed policy directory, so
+          # this one sits beside programs.chromium's default.json/extra.json.
+          "chromium/policies/managed/odoo-ca.json" = lib.mkIf cfg.trustCertificate {source = chromiumPolicy;};
+          "opt/chrome/policies/managed/odoo-ca.json" = lib.mkIf cfg.trustCertificate {source = chromiumPolicy;};
         };
       }
 

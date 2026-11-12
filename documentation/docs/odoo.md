@@ -58,8 +58,9 @@ letters, digits and hyphens, starting with a letter, and not `mail`.
 Automatic ports follow the name order from `basePort` (18069): with
 `blank` and `demo`, blank gets 18069/18070 and demo 18071/18072. Other
 machine-wide options: `baseDomain` (`odoo.localhost`), `package`,
-`mail.*`, `trustCertificate`, `lan.*` and `acme.email` for exposure, and
-the secret options below.
+`mail.*`, `trustCertificate` (on by default: the machine's Firefox and
+Chromium/Chrome trust the local CA through enterprise policies),
+`lan.*` and `acme.email` for exposure, and the secret options below.
 
 ## What each instance gets
 
@@ -211,8 +212,8 @@ example on beelink):
 
 1. Regenerate the CA and the certificate: they now also cover
    `*.odoo.localhost` and the LAN domain (`odoo.beelink.home.arpa`).
-   Firefox on beelink picks up the new CA through its policy at the
-   next start; LAN clients import the new `ca.crt`
+   Firefox and Chromium on beelink pick up the new CA through their
+   policies at the next start; LAN clients import the new `ca.crt`
    ([Reaching Odoo from other machines](odoo-access.md)).
 
     ```sh
@@ -253,3 +254,4 @@ builder):
 | `odoo-lifecycle` | apps from `modules`, neutralize, mail landing in Mailpit, then a package bump and an added app: `-u all` and the install keep the data |
 | `odoo-lan`, `odoo-public` | exposure: see [Reaching Odoo from other machines](odoo-access.md) |
 | `odoo-firefox` | a home-manager Firefox loads an instance without a certificate error, and does not get past TLS on an untrusted control site |
+| `odoo-chromium` | the same for a Chromium in the user's packages, through each trust path alone: system trust (`security.pki`, read through NSS and p11-kit) and the `CACertificates` policy; with neither it refuses the CA |
