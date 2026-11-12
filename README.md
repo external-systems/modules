@@ -50,7 +50,10 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   `pkgs.kubernetes-mcp-server`. Apply an overlay that provides them (home's
   `overlays.default` does). `hostSpec.services.odoo` reads `pkgs.odoo19`
   as fixed by external-systems/pkgs `overlays.odoo` (in its
-  `overlays.default`): nixpkgs' own odoo19 does not evaluate.
+  `overlays.default`): nixpkgs' own odoo19 does not evaluate. It runs
+  0..n local Odoo instances for testing at `https://<name>.odoo.localhost`,
+  reset with `odoo-reset`; see
+  [the Odoo page](https://modules.external.systems/odoo.html).
 - **plasma-manager.** `homeModules.plasma-manager` sets `programs.plasma`;
   add `inputs.plasma-manager.homeModules.plasma-manager` to
   `home-manager.sharedModules`.
