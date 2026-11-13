@@ -322,11 +322,11 @@
         "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1794509535,
-        "narHash": "sha256-js5L/es+CXbtZn05wil3ReJVXUF9D8cROJaBJQ/thcI=",
+        "lastModified": 1794603603,
+        "narHash": "sha256-+EbxuvE6g0DjEvDKfdd6PKK4FGfXAURJpqKn9r+DJMc=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "5c80ae9badefcbb2633c4d3a93063546eed63b80",
+        "rev": "633204181356034961fe1db7f23cbc756ebc2970",
         "type": "github"
       },
       "original": {
@@ -529,11 +529,11 @@
         "skills-terraform": "skills-terraform"
       },
       "locked": {
-        "lastModified": 1794522907,
-        "narHash": "sha256-zrB0dqHyZeM/3rNvPNoW9C07qQmuC1o2fPyRC41jvQo=",
+        "lastModified": 1794607319,
+        "narHash": "sha256-N2syJQTuyIpDtnfnHODMoNpDfCx85d7u8Dsv7UkPd0s=",
         "owner": "external-systems",
         "repo": "skills",
-        "rev": "f0267c9a984aef1ea62a9f72a579c1c9e802ac50",
+        "rev": "1eb44d043d638810b1e20cbbe0c987368c493a01",
         "type": "github"
       },
       "original": {
