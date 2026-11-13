@@ -8,6 +8,7 @@
       site_name = "modules";
       nav = [
         {Home = "index.md";}
+        {"Crash diagnostics" = "crash-diagnostics.md";}
         {
           Odoo = [
             {"CEO: Odoo" = "ceo-odoo.md";}
