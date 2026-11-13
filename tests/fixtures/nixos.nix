@@ -108,6 +108,11 @@
         enable = true;
         filesystems.root.spec = "LABEL=root";
       };
+      crashDiagnostics = {
+        enable = true;
+        panicOnOops = true;
+        sampler.interval = "1min";
+      };
       jovian = {
         enable = true;
         gamingMode = true;
