@@ -112,11 +112,13 @@
         };
         # nixd reads nixpkgs and NixOS/home-manager/flake-parts options from
         # languages.nix.flake (user-wide; a repo's .vscode/settings.json
-        # overrides it per workspace).
+        # overrides it per workspace). nixpkgs gets the org overlay when the
+        # flake has an org-pkgs input, as in the pkgs template, so hover and
+        # completion know org packages.
         "nix.serverSettings".nixd =
           {formatting.command = [(lib.getExe pkgs.alejandra)];}
           // lib.optionalAttrs (languages.nix.flake != null) {
-            nixpkgs.expr = ''import (builtins.getFlake "${languages.nix.flake}").inputs.nixpkgs { }'';
+            nixpkgs.expr = ''let f = builtins.getFlake "${languages.nix.flake}"; in import f.inputs.nixpkgs { overlays = [ (f.inputs.org-pkgs.overlays.default or (_: _: { })) ]; }'';
             options = {
               # `''${` keeps the hostname selector as literal text for nixd
               # to evaluate at LSP time (machine-agnostic config).
@@ -137,17 +139,31 @@
         "go.toolsManagement.checkForUpdates" = "off";
       })
 
-      # basedpyright replaces Pylance (licensed for VS Code only); ruff
-      # formats and sorts imports. The interpreter is the project's.
+      # The org Python standard (the uv2nix skill, the pkgs template's
+      # .vscode/): ty is the language server, as checks.python-ty is the
+      # type check, and ruff lints and formats, as treefmt does; no Pylance
+      # or pyright. ty and ruff run the org nixpkgs binaries, so the editor
+      # reports what CI reports; an org repo's .vscode/settings.json points
+      # them and the interpreter at its .devenv/profile instead. The
+      # interpreter is the project's: no .venv, no terminal activation.
       (lib.mkIf languages.python.enable {
         "python.languageServer" = "None";
         "python.createEnvironment.trigger" = "off";
         "python.experiments.enabled" = false;
+        "python.terminal.activateEnvironment" = false;
+        "python.testing.pytestEnabled" = true;
+        "python.testing.unittestEnabled" = false;
+        "ty.path" = [(lib.getExe pkgs.ty)];
+        "ty.diagnosticMode" = "workspace";
+        "ruff.path" = [(lib.getExe pkgs.ruff)];
         "ruff.configurationPreference" = "filesystemFirst";
         "[python]" = {
           "editor.defaultFormatter" = "charliermarsh.ruff";
           "editor.formatOnSave" = true;
-          "editor.codeActionsOnSave"."source.organizeImports" = "explicit";
+          "editor.codeActionsOnSave" = {
+            "source.fixAll" = "explicit";
+            "source.organizeImports" = "explicit";
+          };
         };
       })
 
@@ -290,8 +306,11 @@
       ++ lib.optionals languages.python.enable [
         ext.ms-python.python
         ext.ms-python.debugpy
-        ext.detachhead.basedpyright
+        ext.astral-sh.ty
         ext.charliermarsh.ruff
+        # pyproject.toml, with the schema store's [tool.uv], [tool.ruff]
+        # and [tool.ty] tables.
+        ext.tamasfe.even-better-toml
       ]
       ++ lib.optionals languages.rust.enable [
         ext.rust-lang.rust-analyzer
@@ -419,7 +438,7 @@
         go.enable = language "Go: the Go extension with gopls from Nix";
         shell.enable = language "shell scripts: ShellCheck and shfmt (both from Nix), format on save";
         markdown.enable = language "Markdown: markdownlint";
-        python.enable = language "Python: Python, debugpy, basedpyright and ruff (format and import sorting on save)";
+        python.enable = language "Python, the org standard: Python, debugpy, ty (language server) and ruff (fixes, import sorting and format on save), both from Nix; pytest; Even Better TOML for pyproject.toml";
         rust.enable = language "Rust: rust-analyzer (clippy on save), Even Better TOML, CodeLLDB";
         gleam.enable = language "Gleam: the Gleam extension, using gleam from PATH";
         zig.enable = language "Zig: the Zig extension with zls from Nix, zig from PATH";
