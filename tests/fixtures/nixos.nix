@@ -89,6 +89,7 @@
       onepassword = {
         enable = true;
         polkitPolicyOwners = ["alice"];
+        customAllowedBrowsers = ["zen"];
       };
       openshell.gateway.enable = true;
       openssh.enable = true;
