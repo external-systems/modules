@@ -82,7 +82,7 @@
     },
     "flake-utils": {
       "inputs": {
-        "systems": "systems_4"
+        "systems": "systems_3"
       },
       "locked": {
         "lastModified": 1731533236,
@@ -209,26 +209,58 @@
     },
     "moscripts": {
       "inputs": {
+        "flake-parts": [
+          "org-pkgs",
+          "moscripts",
+          "org-pkgs",
+          "flake-parts"
+        ],
+        "import-tree": [
+          "org-pkgs",
+          "moscripts",
+          "org-pkgs",
+          "import-tree"
+        ],
         "nixpkgs": [
+          "org-pkgs",
+          "moscripts",
           "org-pkgs",
           "nixpkgs"
         ],
-        "pyproject-build-systems": "pyproject-build-systems",
-        "pyproject-nix": "pyproject-nix",
-        "systems": "systems_2",
-        "uv2nix": "uv2nix"
+        "org-pkgs": [
+          "org-pkgs"
+        ],
+        "pyproject-build-systems": [
+          "org-pkgs",
+          "moscripts",
+          "org-pkgs",
+          "pyproject-build-systems"
+        ],
+        "pyproject-nix": [
+          "org-pkgs",
+          "moscripts",
+          "org-pkgs",
+          "pyproject-nix"
+        ],
+        "uv2nix": [
+          "org-pkgs",
+          "moscripts",
+          "org-pkgs",
+          "uv2nix"
+        ]
       },
       "locked": {
-        "lastModified": 1776608080,
-        "narHash": "sha256-4vVq0KIJe/no8+6RMDLFgc6PhbsKas45+vvJBzkKw7k=",
-        "rev": "c7b7977f4494fc1d48eada86d6f8e9174a74d0e1",
-        "revCount": 77,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/andrewthomaslee/moscripts/0.1.0/019da619-cbca-7990-81d0-6071370e1994/source.tar.gz"
+        "lastModified": 1794671732,
+        "narHash": "sha256-GHuABElJG+GkNLYS436iwgA8NYH/3spSv+X7rbvc1Rs=",
+        "owner": "andrewthomaslee",
+        "repo": "moscripts",
+        "rev": "4b47154622af59dc0269ce8875fdf21b8c2da491",
+        "type": "github"
       },
       "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/andrewthomaslee/moscripts/%2A"
+        "owner": "andrewthomaslee",
+        "repo": "moscripts",
+        "type": "github"
       }
     },
     "nix-github-actions": {
@@ -314,19 +346,19 @@
         "moscripts": "moscripts",
         "nix-vscode-extensions": "nix-vscode-extensions",
         "nixpkgs": "nixpkgs_2",
-        "pyproject-build-systems": "pyproject-build-systems_2",
-        "pyproject-nix": "pyproject-nix_2",
+        "pyproject-build-systems": "pyproject-build-systems",
+        "pyproject-nix": "pyproject-nix",
         "reveal-js": "reveal-js",
         "treefmt-nix": "treefmt-nix",
-        "uv2nix": "uv2nix_2",
+        "uv2nix": "uv2nix",
         "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1794610832,
-        "narHash": "sha256-w8VjGRD/wZuw6EDvzoutINJs779PNEzq/8VzRQ56ccs=",
+        "lastModified": 1794671936,
+        "narHash": "sha256-QS24ORMSPj/Fn4IMyAl9GyqmFSxZoIASe1DHP3oWH4U=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "2fa0b282493c68d0d80bef224064c7cdfa6e30a4",
+        "rev": "cd8dedf4676f2c5815a0f7473f2b199ddea105a7",
         "type": "github"
       },
       "original": {
@@ -362,38 +394,6 @@
       "inputs": {
         "nixpkgs": [
           "org-pkgs",
-          "moscripts",
-          "nixpkgs"
-        ],
-        "pyproject-nix": [
-          "org-pkgs",
-          "moscripts",
-          "pyproject-nix"
-        ],
-        "uv2nix": [
-          "org-pkgs",
-          "moscripts",
-          "uv2nix"
-        ]
-      },
-      "locked": {
-        "lastModified": 1756087852,
-        "narHash": "sha256-4jc3JDQt75fYXFrglgqyzF6C6zLU0QGLymzian4aP+U=",
-        "owner": "pyproject-nix",
-        "repo": "build-system-pkgs",
-        "rev": "6edb3ae27395cd88be3d64b732d1539957dad59c",
-        "type": "github"
-      },
-      "original": {
-        "owner": "pyproject-nix",
-        "repo": "build-system-pkgs",
-        "type": "github"
-      }
-    },
-    "pyproject-build-systems_2": {
-      "inputs": {
-        "nixpkgs": [
-          "org-pkgs",
           "nixpkgs"
         ],
         "pyproject-nix": [
@@ -420,28 +420,6 @@
       }
     },
     "pyproject-nix": {
-      "inputs": {
-        "nixpkgs": [
-          "org-pkgs",
-          "moscripts",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1756395552,
-        "narHash": "sha256-5aJM14MpoLk2cdZAetu60OkLQrtFLWTICAyn1EP7ZpM=",
-        "owner": "pyproject-nix",
-        "repo": "pyproject.nix",
-        "rev": "030dffc235dcf240d918c651c78dc5f158067b51",
-        "type": "github"
-      },
-      "original": {
-        "owner": "pyproject-nix",
-        "repo": "pyproject.nix",
-        "type": "github"
-      }
-    },
-    "pyproject-nix_2": {
       "inputs": {
         "nixpkgs": [
           "org-pkgs",
@@ -695,7 +673,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "systems": "systems_3"
+        "systems": "systems_2"
       },
       "locked": {
         "lastModified": 1792525131,
@@ -728,21 +706,6 @@
     },
     "systems_2": {
       "locked": {
-        "lastModified": 1681028828,
-        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
-        "owner": "nix-systems",
-        "repo": "default",
-        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-systems",
-        "repo": "default",
-        "type": "github"
-      }
-    },
-    "systems_3": {
-      "locked": {
         "lastModified": 1680978846,
         "narHash": "sha256-Gtqg8b/v49BFDpDetjclCYXm8mAnTrUzR0JnE2nv5aw=",
         "owner": "nix-systems",
@@ -756,7 +719,7 @@
         "type": "github"
       }
     },
-    "systems_4": {
+    "systems_3": {
       "locked": {
         "lastModified": 1681028828,
         "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
@@ -793,33 +756,6 @@
       }
     },
     "uv2nix": {
-      "inputs": {
-        "nixpkgs": [
-          "org-pkgs",
-          "moscripts",
-          "nixpkgs"
-        ],
-        "pyproject-nix": [
-          "org-pkgs",
-          "moscripts",
-          "pyproject-nix"
-        ]
-      },
-      "locked": {
-        "lastModified": 1756466761,
-        "narHash": "sha256-ALXRHIMXQ4qVNfCbcWykC23MjMwUoHn9BreoBfqmq0Y=",
-        "owner": "pyproject-nix",
-        "repo": "uv2nix",
-        "rev": "0529e6d8227517205afcd1b37eee3088db745730",
-        "type": "github"
-      },
-      "original": {
-        "owner": "pyproject-nix",
-        "repo": "uv2nix",
-        "type": "github"
-      }
-    },
-    "uv2nix_2": {
       "inputs": {
         "nixpkgs": [
           "org-pkgs",
