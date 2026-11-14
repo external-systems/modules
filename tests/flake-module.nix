@@ -236,7 +236,9 @@
         files = hm.home.file;
         json = name: builtins.fromJSON (builtins.unsafeDiscardStringContext files.${name}.text);
         claude = json ".claude/settings.json";
-        context = files.".claude/CLAUDE.md".text;
+        # The shared machine context; claude's CLAUDE.md adds its shell note.
+        context = files.".pi/agent/AGENTS.md".text;
+        claudeContext = files.".claude/CLAUDE.md".text;
         opencodeNixEval = {
           action = "shell";
           resource = "nix eval *";
@@ -256,7 +258,9 @@
         assert expect (hm.home.sessionVariables.ANTHROPIC_BASE_URL == "http://127.0.0.1:8787") "claude not routed to the headroom proxy root (claude appends /v1 itself)";
         assert expect (lib.hasPrefix "Machine: eval (NixOS " context) "no Machine line";
         assert expect (lib.hasInfix "Repo: github.com/example/home (local: /home/alice/home)" context) "no Repo line";
-        assert expect (lib.all (f: files.${f}.text == context) [".pi/agent/AGENTS.md" ".kimi-code/AGENTS.md"]) "agents disagree on the machine context";
+        assert expect (files.".kimi-code/AGENTS.md".text == context) "agents disagree on the machine context";
+        assert expect (lib.hasPrefix context claudeContext) "claude's CLAUDE.md does not start with the machine context";
+        assert expect (lib.hasInfix "Claude Code's bundled ugrep" claudeContext && !(lib.hasInfix "ugrep" context)) "the ugrep note is not claude-only";
         assert expect (hm.xdg.configFile."opencode/AGENTS.md".text == context) "opencode has another machine context";
         assert expect (lib.hasInfix "Nix builds and VM tests run long" context) "no timeout advice in the machine context";
         assert expect (lib.elem opencodeNixEval hm.programs.opencode.settings.permissions) "opencode does not allow nix eval";

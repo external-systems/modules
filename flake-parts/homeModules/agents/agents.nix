@@ -106,6 +106,13 @@
 
     claudeLib = import ./_claude.nix {inherit pkgs;};
 
+    # Appended to the default ~/.claude/CLAUDE.md only: Claude Code's Bash
+    # tool replaces `grep` with its bundled ugrep.
+    claudeShellNote = ''
+
+      Shell: `grep` is Claude Code's bundled ugrep: use `grep -E` (no PCRE lookarounds such as `(?!...)`).
+    '';
+
     # ---- Nix workflow (homeSpec.agents.nixWorkflow) ---- #
     # One set of defaults, rendered per agent in _nix-workflow.nix.
     wf = cfg.nixWorkflow;
@@ -784,8 +791,12 @@
             })
             # User-level memory (~/.claude/CLAUDE.md), loaded into every
             # session; claude.claudeMd overrides the machine context.
+            # Claude Code runs Bash with its own `grep` function (bundled
+            # ugrep), which every agent there trips over; no other agent has it.
             (lib.mkIf (cfg.claude.claudeMd != null || machineContext.enable) {
-              ".claude/CLAUDE.md".text = lib.defaultTo machineContext.text cfg.claude.claudeMd;
+              ".claude/CLAUDE.md".text =
+                lib.defaultTo machineContext.text cfg.claude.claudeMd
+                + lib.optionalString (cfg.claude.claudeMd == null) claudeShellNote;
             })
             # settings.json carries no mcpServers: current claude-code
             # ignores them there (`claude mcp list`, 2026-10); the live
