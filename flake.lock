@@ -229,38 +229,21 @@
         ],
         "org-pkgs": [
           "org-pkgs"
-        ],
-        "pyproject-build-systems": [
-          "org-pkgs",
-          "moscripts",
-          "org-pkgs",
-          "pyproject-build-systems"
-        ],
-        "pyproject-nix": [
-          "org-pkgs",
-          "moscripts",
-          "org-pkgs",
-          "pyproject-nix"
-        ],
-        "uv2nix": [
-          "org-pkgs",
-          "moscripts",
-          "org-pkgs",
-          "uv2nix"
         ]
       },
       "locked": {
-        "lastModified": 1794671732,
-        "narHash": "sha256-GHuABElJG+GkNLYS436iwgA8NYH/3spSv+X7rbvc1Rs=",
-        "owner": "andrewthomaslee",
-        "repo": "moscripts",
-        "rev": "4b47154622af59dc0269ce8875fdf21b8c2da491",
-        "type": "github"
+        "lastModified": 1794680356,
+        "narHash": "sha256-qJQQqY4IIpIo4EVjuYGnp7sLlPiEqC4XcGtM8IAI37U=",
+        "ref": "main",
+        "rev": "e351fa8bf25d306bae1335d128d6870c213bfae7",
+        "revCount": 79,
+        "type": "git",
+        "url": "https://github.com/andrewthomaslee/moscripts"
       },
       "original": {
-        "owner": "andrewthomaslee",
-        "repo": "moscripts",
-        "type": "github"
+        "ref": "main",
+        "type": "git",
+        "url": "https://github.com/andrewthomaslee/moscripts"
       }
     },
     "nix-github-actions": {
@@ -354,11 +337,11 @@
         "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1794671936,
-        "narHash": "sha256-QS24ORMSPj/Fn4IMyAl9GyqmFSxZoIASe1DHP3oWH4U=",
+        "lastModified": 1794680531,
+        "narHash": "sha256-nZyIl+U5yHeOS2aNmh7rl5Hmp62aZdPQhCixtC2nRMk=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "cd8dedf4676f2c5815a0f7473f2b199ddea105a7",
+        "rev": "8a04c686191637246ffd621d4c872a030e81cf73",
         "type": "github"
       },
       "original": {
@@ -507,11 +490,11 @@
         "skills-terraform": "skills-terraform"
       },
       "locked": {
-        "lastModified": 1794614196,
-        "narHash": "sha256-eB2IGmOVJHlXVwEFUy+aJ5//ioSfUpxmIZu41gM7feg=",
+        "lastModified": 1794680671,
+        "narHash": "sha256-70rGni/4xA7mpWG/nkm+iVjc1fS4OuVyI2ejePRAV+o=",
         "owner": "external-systems",
         "repo": "skills",
-        "rev": "d6f59bff3c9625177994c8d253c3f408bbf08cac",
+        "rev": "bede943006539052a2c582d6e3fdaedfd1b879fe",
         "type": "github"
       },
       "original": {
