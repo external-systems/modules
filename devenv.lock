@@ -144,38 +144,21 @@
         ],
         "org-pkgs": [
           "org-pkgs"
-        ],
-        "pyproject-build-systems": [
-          "org-pkgs",
-          "moscripts",
-          "org-pkgs",
-          "pyproject-build-systems"
-        ],
-        "pyproject-nix": [
-          "org-pkgs",
-          "moscripts",
-          "org-pkgs",
-          "pyproject-nix"
-        ],
-        "uv2nix": [
-          "org-pkgs",
-          "moscripts",
-          "org-pkgs",
-          "uv2nix"
         ]
       },
       "locked": {
-        "lastModified": 1794671732,
-        "narHash": "sha256-GHuABElJG+GkNLYS436iwgA8NYH/3spSv+X7rbvc1Rs=",
-        "owner": "andrewthomaslee",
-        "repo": "moscripts",
-        "rev": "4b47154622af59dc0269ce8875fdf21b8c2da491",
-        "type": "github"
+        "lastModified": 1794680356,
+        "narHash": "sha256-qJQQqY4IIpIo4EVjuYGnp7sLlPiEqC4XcGtM8IAI37U=",
+        "ref": "main",
+        "rev": "e351fa8bf25d306bae1335d128d6870c213bfae7",
+        "revCount": 79,
+        "type": "git",
+        "url": "https://github.com/andrewthomaslee/moscripts"
       },
       "original": {
-        "owner": "andrewthomaslee",
-        "repo": "moscripts",
-        "type": "github"
+        "ref": "main",
+        "type": "git",
+        "url": "https://github.com/andrewthomaslee/moscripts"
       }
     },
     "nix-vscode-extensions": {
@@ -231,17 +214,17 @@
         "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1794671936,
-        "narHash": "sha256-QS24ORMSPj/Fn4IMyAl9GyqmFSxZoIASe1DHP3oWH4U=",
+        "lastModified": 1794680531,
+        "narHash": "sha256-nZyIl+U5yHeOS2aNmh7rl5Hmp62aZdPQhCixtC2nRMk=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "cd8dedf4676f2c5815a0f7473f2b199ddea105a7",
+        "rev": "8a04c686191637246ffd621d4c872a030e81cf73",
         "type": "github"
       },
       "original": {
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "cd8dedf4676f2c5815a0f7473f2b199ddea105a7",
+        "rev": "8a04c686191637246ffd621d4c872a030e81cf73",
         "type": "github"
       }
     },
