@@ -156,7 +156,10 @@
             enable = true;
             userName = "alice";
             userEmail = "alice@example.com";
-            githubAuth.enabled = true;
+            githubAuth = {
+              enabled = true;
+              nix.enable = true;
+            };
           };
           headroom.enable = true;
           k9s.enable = true;
