@@ -269,6 +269,53 @@
         assert expect (hm.home.activation ? kimiNixWorkflow) "no kimi config.toml merge";
           pkgs.writeText "agents-wiring" "ok";
 
+      # Instructions reach every agent the same way: machine context, the
+      # org ground rules, the user's text, then the agent's own text;
+      # "replace" moves them into each agent's system-prompt spot
+      # (opencode has none and must stay on "append"). Remote MCP servers
+      # reach every agent too, and claude reads /tmp like opencode.
+      agents-instructions = let
+        with' = module:
+          (machine.extendModules {modules = [{home-manager.users.alice = module;}];}).config.home-manager.users.alice;
+        appended = with' {
+          homeSpec.agents = {
+            instructions.text = "Shared user text.";
+            claude.instructions.text = "Claude only.";
+            mcp.varlock-docs.enable = true;
+          };
+        };
+        replaced = with' {
+          homeSpec.agents = {
+            instructions.mode = "replace";
+            opencode.instructions.mode = "append";
+          };
+        };
+        noRules = with' {homeSpec.agents.groundRules.enable = false;};
+        opencodeReplace = with' {homeSpec.agents.instructions.mode = "replace";};
+        text = hm: name: hm.home.file.${name}.text;
+        json = hm: name: builtins.fromJSON (builtins.unsafeDiscardStringContext (text hm name));
+        rules = "external-systems ground rules";
+        expect = cond: msg: lib.assertMsg cond "agents-instructions: ${msg}";
+      in
+        assert expect (lib.all (f: lib.hasInfix rules f && lib.hasInfix "Shared user text." f) [
+          (text appended ".pi/agent/AGENTS.md")
+          (text appended ".kimi-code/AGENTS.md")
+          (text appended ".claude/CLAUDE.md")
+          appended.xdg.configFile."opencode/AGENTS.md".text
+        ]) "an agent misses the ground rules or the shared text";
+        assert expect (lib.hasInfix "Claude only." (text appended ".claude/CLAUDE.md") && !(lib.hasInfix "Claude only." (text appended ".pi/agent/AGENTS.md"))) "claude's own text is not claude-only";
+        assert expect (!(lib.hasInfix rules (text noRules ".pi/agent/AGENTS.md"))) "groundRules.enable = false keeps the rules";
+        assert expect ((json appended ".kimi-code/mcp.json").mcpServers.varlock-docs.type == "http") "kimi has no remote varlock-docs";
+        assert expect ((json appended ".pi/agent/mcp.json").mcpServers.varlock-docs ? url) "pi has no remote varlock-docs";
+        assert expect (appended.programs.opencode.settings.mcp.servers.varlock-docs.type == "remote") "opencode has no remote varlock-docs";
+        assert expect (lib.hasInfix "varlock-docs" appended.home.activation.claudeMcpServers.data) "claude's ~/.claude.json sync lacks varlock-docs";
+        assert expect (lib.elem "/tmp" (json appended ".claude/settings.json").permissions.additionalDirectories) "claude cannot read /tmp";
+        assert expect (replaced.home.file ? ".pi/agent/SYSTEM.md" && !(replaced.home.file ? ".pi/agent/AGENTS.md")) "pi replace does not write SYSTEM.md alone";
+        assert expect (replaced.home.file ? ".kimi-code/SYSTEM.md" && !(replaced.home.file ? ".kimi-code/AGENTS.md")) "kimi replace does not write SYSTEM.md alone";
+        assert expect ((json replaced ".claude/settings.json").outputStyle == "home-manager" && lib.hasInfix rules (text replaced ".claude/output-styles/home-manager.md")) "claude replace does not select the output style";
+        assert expect (lib.any (a: !a.assertion && lib.hasInfix "opencode cannot replace" a.message) opencodeReplace.assertions) "opencode replace is not refused";
+          pkgs.writeText "agents-instructions" "ok";
+
       # Each agent on its own: it writes exactly its own files, and still
       # gets the shared machine context, MCP servers, skills and Nix
       # workflow; the other three leave nothing behind.

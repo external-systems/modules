@@ -18,7 +18,7 @@ vars, packages, overlays or fleet values. Every module is off until its
 - `git add` new files before any `nix` command.
 - `fmt`, then `check`. Both must pass before a change is done.
 - After `nix flake update org-pkgs`, run `sync-locks` in the same commit.
-- VM tests: `vm-test --list`, `vm-test <name>` (local KVM) or `vm-test <name> --remote` (remote builder); the exit code is the result, logs in `.vm-tests/<name>/`. See the `vm-tests` skill.
+- VM tests: `vm-test --list`, `vm-test <name>` (local KVM) or `vm-test <name> --remote` (remote builder); the exit code is the result, logs in `.vm-tests/<name>/`. See the external-systems skill's `references/vm-tests.md`.
 
 ## Rules
 - Load the `nix-style` skill before editing any `.nix` file.

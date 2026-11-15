@@ -54,5 +54,5 @@
 
   # The server names the module has ever written to ~/.claude.json:
   # the bootstrap for the first sync, when no state file exists yet.
-  knownServers = ["artifacthub" "github" "headroom" "kubernetes" "nixos"];
+  knownServers = ["artifacthub" "github" "headroom" "kubernetes" "nixos" "varlock-docs"];
 }

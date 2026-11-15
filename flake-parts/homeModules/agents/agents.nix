@@ -23,8 +23,17 @@
   #     (on with it), Cowork's QEMU when the machine has KVM; the host
   #     side (kvm group, vhost_vsock) is nixosModules.claude-desktop.
   #
-  # Helpers live next to this file: _machine-context.nix (the
-  # user-level instructions every agent gets) and _claude.nix (the
+  #   homeSpec.agents.instructions    — what every agent is told:
+  #     machine context, the org ground rules, the user's text, then the
+  #     agent's own (homeSpec.agents.<agent>.instructions); "append" adds
+  #     it to the built-in system prompt, "replace" replaces it.
+  #
+  # Every agent gets the same config (MCP servers, skills, workflow,
+  # instructions) unless the agent cannot take it; those exceptions are
+  # commented where they are made.
+  #
+  # Helpers live next to this file: _machine-context.nix (the machine
+  # facts in every agent's instructions) and _claude.nix (the
   # ~/.claude.json MCP sync and the .nix format hook).
   flake.homeModules.agents = {
     pkgs,
@@ -108,6 +117,46 @@
 
     # Appended to the default ~/.claude/CLAUDE.md only: Claude Code's Bash
     # tool replaces `grep` with its bundled ugrep.
+    # ---- Instructions (homeSpec.agents.instructions) ---- #
+    # One text per agent, in order: the machine context, the org ground
+    # rules (external-systems/skills lib.groundRules), the user's text,
+    # then the agent's own text. "append" keeps the agent's built-in
+    # system prompt and adds the text (its user-level instructions
+    # file); "replace" puts the text in place of that prompt (pi and kimi
+    # SYSTEM.md, a claude output style; opencode has no equivalent).
+    instructionsFor = agent: let
+      own = cfg.${agent}.instructions;
+    in {
+      mode = lib.defaultTo cfg.instructions.mode own.mode;
+      text = lib.concatStringsSep "\n" (lib.filter (t: t != "") [
+        (lib.optionalString machineContext.enable machineContext.text)
+        (lib.optionalString cfg.groundRules.enable inputs.skills.lib.groundRules)
+        cfg.instructions.text
+        own.text
+      ]);
+    };
+    piInstructions = instructionsFor "pi";
+    kimiInstructions = instructionsFor "kimi";
+    claudeInstructions = instructionsFor "claude";
+    opencodeInstructions = instructionsFor "opencode";
+    # Per-agent options: the shared mode unless set, and text added after
+    # the shared text for this agent only.
+    agentInstructionsOptions = agent: {
+      mode = lib.mkOption {
+        type = with lib.types; nullOr (enum ["append" "replace"]);
+        default = null;
+        description = "${agent}'s instructions mode; null follows homeSpec.agents.instructions.mode.";
+      };
+      text = lib.mkOption {
+        type = lib.types.lines;
+        default = "";
+        description = "Text added to ${agent}'s instructions only, after homeSpec.agents.instructions.text.";
+      };
+    };
+    # The claude output style that replace mode selects: it takes the
+    # place of claude's default software-engineering prompt.
+    claudeOutputStyle = "home-manager";
+
     claudeShellNote = ''
 
       Shell: `grep` is Claude Code's bundled ugrep: use `grep -E` (no PCRE lookarounds such as `(?!...)`).
@@ -165,6 +214,13 @@
       // mcpCfg.extraServers;
     # TOML renderer for kimi-code's config.toml (homeSpec.agents.kimi.config).
     tomlFmt = pkgs.formats.toml {};
+    # Remote (streamable HTTP) MCP servers, name -> URL, for every agent
+    # that takes one in its config file: opencode, pi, kimi and claude
+    # (not Claude Desktop's Chat, whose config file takes local servers
+    # only).
+    remoteMcpServers = lib.optionalAttrs mcpCfg.varlock-docs.enable {
+      varlock-docs = "https://docs.mcp.varlock.dev/mcp";
+    };
     # claude-compatible mcpServers attrset (command + args), written to
     # kimi-code (~/.kimi-code/mcp.json) and synced into ~/.claude.json.
     sharedMcpServersClaude =
@@ -178,11 +234,22 @@
     # (mcp.extraServers — e.g. the OpenShell code-agent image pins all
     # its servers `direct` so their tools are listed in the system
     # prompt at session start instead of hidden behind codemode).
-    piMcpServers = lib.mapAttrs (name: v:
-      sharedMcpServersClaude.${name}
-      // lib.optionalAttrs ((v.description or null) != null) {inherit (v) description;}
-      // lib.optionalAttrs ((v.exposure or null) != null) {inherit (v) exposure;})
-    sharedMcpCommands;
+    piMcpServers =
+      lib.mapAttrs (name: v:
+        sharedMcpServersClaude.${name}
+        // lib.optionalAttrs ((v.description or null) != null) {inherit (v) description;}
+        // lib.optionalAttrs ((v.exposure or null) != null) {inherit (v) exposure;})
+      sharedMcpCommands
+      // lib.mapAttrs (_: url: {inherit url;}) remoteMcpServers;
+    # claude and kimi: the local servers plus the remote ones as
+    # {type = "http"; url;}.
+    agentMcpServers =
+      sharedMcpServersClaude
+      // lib.mapAttrs (_: url: {
+        type = "http";
+        inherit url;
+      })
+      remoteMcpServers;
 
     # ---- claude-code settings ---- #
     # ~/.claude/settings.json: the Nix workflow defaults, the skills
@@ -193,7 +260,7 @@
     claudeSettings = lib.foldl' lib.recursiveUpdate {} [
       (lib.optionalAttrs wf.enable {
         permissions = {
-          additionalDirectories = ["/nix/store"];
+          additionalDirectories = ["/nix/store" "/tmp"];
           inherit (nixWorkflow.claude) allow;
         };
         inherit (nixWorkflow.claude) env;
@@ -202,10 +269,51 @@
         hooks.PostToolUse = [nixWorkflow.claude.hook];
       })
       (lib.optionalAttrs skillsRuntimeEnabled {inherit (skillsRuntime) env;})
+      (lib.optionalAttrs (claudeInstructions.mode == "replace") {outputStyle = claudeOutputStyle;})
       cfg.claude.settings
     ];
   in {
+    imports = [
+      (lib.mkRemovedOptionModule ["homeSpec" "agents" "claude" "claudeMd"] "Use homeSpec.agents.instructions (or homeSpec.agents.claude.instructions) instead; its text is added to the machine context and ground rules, and mode = \"replace\" replaces the system prompt.")
+      (lib.mkRemovedOptionModule ["homeSpec" "agents" "pi" "appendSystemMd"] "Use homeSpec.agents.instructions (or homeSpec.agents.pi.instructions) instead.")
+      (lib.mkRemovedOptionModule ["homeSpec" "agents" "kimi" "systemMd"] "Use homeSpec.agents.instructions (or homeSpec.agents.kimi.instructions) with mode = \"replace\" instead.")
+    ];
+
     options.homeSpec.agents = {
+      # ---- Instructions: homeSpec.agents.instructions.* ---- #
+      # What every enabled agent is told each session, on top of or in
+      # place of its built-in system prompt.
+      instructions = {
+        mode = lib.mkOption {
+          type = lib.types.enum ["append" "replace"];
+          default = "append";
+          description = ''
+            How the instructions reach every enabled agent:
+            - "append": the agent keeps its built-in system prompt and gets
+              the instructions as user-level instructions (claude
+              ~/.claude/CLAUDE.md, pi ~/.pi/agent/AGENTS.md, kimi
+              ~/.kimi-code/AGENTS.md, opencode ~/.config/opencode/AGENTS.md).
+            - "replace": the instructions take the place of the built-in
+              system prompt (pi ~/.pi/agent/SYSTEM.md, kimi
+              ~/.kimi-code/SYSTEM.md, claude a user output style without
+              the coding instructions). opencode has no equivalent and
+              fails the assertion; set its own mode to "append".
+            Per agent: homeSpec.agents.<agent>.instructions.mode.
+          '';
+        };
+        text = lib.mkOption {
+          type = lib.types.lines;
+          default = "";
+          example = "The user is new to Linux: explain each command before running it.";
+          description = "Text every enabled agent gets after the machine context and the ground rules: who the user is and how to work with them. Merges across modules (a shared module and the user's profile).";
+        };
+      };
+      groundRules.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Add the external-systems org ground rules (inputs.skills.lib.groundRules: clones on main, worktrees, no deploys, secrets through varlock) to every enabled agent's instructions.";
+      };
+
       # ---- Shared skills: homeSpec.agents.skills.* ---- #
       skills = {
         enable = lib.mkOption {
@@ -339,6 +447,7 @@
       # ---- pi: homeSpec.agents.pi.* ---- #
       pi = {
         enable = lib.mkEnableOption "the pi coding agent (badlogic/pi-mono)";
+        instructions = agentInstructionsOptions "pi";
         package = lib.mkOption {
           type = lib.types.package;
           default = pkgs.pi-coding-agent;
@@ -367,19 +476,12 @@
           default = null;
           description = "pi models.json provider overrides (attrs rendered to JSON); null = not written.";
         };
-        # ~/.pi/agent/APPEND_SYSTEM.md: appended to pi's system prompt
-        # every session. The sandbox image bakes its environment
-        # briefing here; NixOS hosts use the machineContext AGENTS.md.
-        appendSystemMd = lib.mkOption {
-          type = with lib.types; nullOr str;
-          default = null;
-          description = "Text for ~/.pi/agent/APPEND_SYSTEM.md (appended to pi's system prompt); null = not written.";
-        };
       };
 
       # ---- kimi-code: homeSpec.agents.kimi.* ---- #
       kimi = {
         enable = lib.mkEnableOption "the Kimi Code CLI (MoonshotAI)";
+        instructions = agentInstructionsOptions "kimi";
         # Package comes from numtide/llm-agents.nix via overlays/default.nix
         # (from-source pnpm build, binary `kimi`, auto-update disabled by the
         # wrapper). Overridable so a caller can pin another build.
@@ -402,19 +504,12 @@
           default = null;
           description = "kimi-code config.toml content (attrs rendered to TOML); null = not written.";
         };
-        # ~/.kimi-code/SYSTEM.md ($KIMI_CODE_HOME/SYSTEM.md): added to
-        # kimi's system prompt every session — the sandbox image's
-        # environment briefing lives here.
-        systemMd = lib.mkOption {
-          type = with lib.types; nullOr str;
-          default = null;
-          description = "Text for ~/.kimi-code/SYSTEM.md (added to kimi's system prompt); null = not written.";
-        };
       };
 
       # ---- claude-code: homeSpec.agents.claude.* ---- #
       claude = {
         enable = lib.mkEnableOption "the Claude Code CLI (Anthropic)";
+        instructions = agentInstructionsOptions "claude";
         package = lib.mkOption {
           type = lib.types.package;
           default = pkgs.claude-code;
@@ -441,15 +536,6 @@
           type = lib.types.bool;
           default = false;
           description = "Write ~/.claude.json from claude.settings plus the shared mcpServers (home-manager then owns claude's mutable state file; the activation-time MCP sync is skipped).";
-        };
-        # ~/.claude/CLAUDE.md override text (user-level memory loaded
-        # every session). Takes precedence over the machineContext
-        # CLAUDE.md; a standalone eval (the OCI sandbox image) never
-        # writes machineContext anyway.
-        claudeMd = lib.mkOption {
-          type = with lib.types; nullOr str;
-          default = null;
-          description = "Override text for ~/.claude/CLAUDE.md (user-level memory); null = machineContext default.";
         };
         # Claude Desktop (Chat, Code, Cowork). Its Code tab runs the same
         # engine as the CLI and reads the ~/.claude files above; Chat
@@ -488,6 +574,7 @@
       # ---- opencode: homeSpec.agents.opencode.* ---- #
       opencode = {
         enable = lib.mkEnableOption "default opencode configuration";
+        instructions = agentInstructionsOptions "opencode";
         package = lib.mkOption {
           type = lib.types.package;
           default = pkgs.opencode;
@@ -621,12 +708,10 @@
         };
         # Varlock docs (https://docs.mcp.varlock.dev/mcp, public, no
         # auth). Off by default, enabled per user by the consumer.
-        # opencode-only: the file-configured agents get only local
-        # servers (remote url MCP support varies).
         varlock-docs.enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable the Varlock docs MCP server (search varlock.dev documentation) in opencode.";
+          description = "Enable the Varlock docs MCP server (search varlock.dev documentation) in every enabled agent (remote, streamable HTTP; not Claude Desktop's Chat).";
         };
         # Extra local stdio servers merged verbatim into the shared set
         # (the OpenShell code-agent image's env-mapping credential
@@ -668,6 +753,10 @@
             assertion = mcpCfg.github.auth == "oauth" -> mcpCfg.github.patFile == null;
             message = "homeSpec.agents.mcp: github.patFile is only valid with github.auth = \"pat\" — the oauth and pat methods are mutually exclusive.";
           }
+          {
+            assertion = oc.enable -> opencodeInstructions.mode == "append";
+            message = "homeSpec.agents: opencode cannot replace its system prompt from a config file; set homeSpec.agents.opencode.instructions.mode = \"append\".";
+          }
         ];
       }
 
@@ -690,12 +779,14 @@
           })
           # ~/.pi/agent/AGENTS.md applies across working directories
           # (pi configuration docs).
-          (lib.mkIf machineContext.enable {
-            ".pi/agent/AGENTS.md".text = machineContext.text;
-          })
+          (lib.mkIf (piInstructions.text != "") (
+            if piInstructions.mode == "replace"
+            then {".pi/agent/SYSTEM.md".text = piInstructions.text;}
+            else {".pi/agent/AGENTS.md".text = piInstructions.text;}
+          ))
           # ~/.pi/agent/mcp.json (every project), with pi's per-server
           # description/exposure fields when present (mcp.extraServers).
-          (lib.mkIf (sharedMcpCommands != {}) {
+          (lib.mkIf (piMcpServers != {}) {
             ".pi/agent/mcp.json".text = builtins.toJSON {mcpServers = piMcpServers;};
           })
           (lib.mkIf (cfg.pi.settings != {}) {
@@ -707,9 +798,6 @@
               then lib.recursiveUpdate headroomPiModels (lib.defaultTo {} cfg.pi.models)
               else cfg.pi.models
             );
-          })
-          (lib.mkIf (cfg.pi.appendSystemMd != null) {
-            ".pi/agent/APPEND_SYSTEM.md".text = cfg.pi.appendSystemMd;
           })
           # The Nix workflow as a global pi extension (auto-discovered).
           (lib.mkIf wf.enable {
@@ -727,11 +815,13 @@
               ".kimi-code/skills".source = skillsDir;
             })
             # kimi-code user-level AGENTS.md ($KIMI_CODE_HOME/AGENTS.md).
-            (lib.mkIf machineContext.enable {
-              ".kimi-code/AGENTS.md".text = machineContext.text;
-            })
-            (lib.mkIf (sharedMcpCommands != {}) {
-              ".kimi-code/mcp.json".text = builtins.toJSON {mcpServers = sharedMcpServersClaude;};
+            (lib.mkIf (kimiInstructions.text != "") (
+              if kimiInstructions.mode == "replace"
+              then {".kimi-code/SYSTEM.md".text = kimiInstructions.text;}
+              else {".kimi-code/AGENTS.md".text = kimiInstructions.text;}
+            ))
+            (lib.mkIf (agentMcpServers != {}) {
+              ".kimi-code/mcp.json".text = builtins.toJSON {mcpServers = agentMcpServers;};
             })
             (lib.mkIf (cfg.kimi.config != null) {
               ".kimi-code/config.toml".source = tomlFmt.generate "kimi-config.toml" (
@@ -743,9 +833,6 @@
                   }
                 else cfg.kimi.config
               );
-            })
-            (lib.mkIf (cfg.kimi.systemMd != null) {
-              ".kimi-code/SYSTEM.md".text = cfg.kimi.systemMd;
             })
           ];
           # Route kimi's OAuth-managed provider traffic through the headroom
@@ -789,15 +876,25 @@
             (lib.mkIf cfg.skills.enable {
               ".claude/skills".source = skillsDir;
             })
-            # User-level memory (~/.claude/CLAUDE.md), loaded into every
-            # session; claude.claudeMd overrides the machine context.
+            # append: user-level memory (~/.claude/CLAUDE.md), loaded into
+            # every session. replace: a user output style without claude's
+            # coding instructions, selected in settings.json (outputStyle).
             # Claude Code runs Bash with its own `grep` function (bundled
             # ugrep), which every agent there trips over; no other agent has it.
-            (lib.mkIf (cfg.claude.claudeMd != null || machineContext.enable) {
-              ".claude/CLAUDE.md".text =
-                lib.defaultTo machineContext.text cfg.claude.claudeMd
-                + lib.optionalString (cfg.claude.claudeMd == null) claudeShellNote;
-            })
+            (lib.mkIf (claudeInstructions.text != "") (
+              if claudeInstructions.mode == "replace"
+              then {
+                ".claude/output-styles/${claudeOutputStyle}.md".text = ''
+                  ---
+                  name: ${claudeOutputStyle}
+                  description: The system prompt from homeSpec.agents.instructions (replace mode)
+                  keep-coding-instructions: false
+                  ---
+
+                  ${claudeInstructions.text + claudeShellNote}'';
+              }
+              else {".claude/CLAUDE.md".text = claudeInstructions.text + claudeShellNote;}
+            ))
             # settings.json carries no mcpServers: current claude-code
             # ignores them there (`claude mcp list`, 2026-10); the live
             # wiring is ~/.claude.json, synced below.
@@ -806,7 +903,7 @@
             })
             (lib.mkIf cfg.claude.writeClaudeJson {
               ".claude.json".text = builtins.toJSON (
-                cfg.claude.settings // lib.optionalAttrs (sharedMcpServersClaude != {}) {mcpServers = sharedMcpServersClaude;}
+                cfg.claude.settings // lib.optionalAttrs (agentMcpServers != {}) {mcpServers = agentMcpServers;}
               );
             })
           ];
@@ -829,8 +926,8 @@
               run ${lib.getExe claudeLib.mcpSync} ${lib.escapeShellArgs [
                 "${config.home.homeDirectory}/.claude.json"
                 "${config.xdg.stateHome}/home-manager/claude-mcp-servers.json"
-                (builtins.toJSON sharedMcpServersClaude)
-                (builtins.toJSON (lib.unique (claudeLib.knownServers ++ lib.attrNames sharedMcpCommands)))
+                (builtins.toJSON agentMcpServers)
+                (builtins.toJSON (lib.unique (claudeLib.knownServers ++ lib.attrNames agentMcpServers)))
               ]}
             '';
           };
@@ -860,8 +957,8 @@
       # ---- opencode ---- #
       (lib.mkIf oc.enable {
         xdg.configFile = {
-          "opencode/AGENTS.md" = lib.mkIf machineContext.enable {
-            inherit (machineContext) text;
+          "opencode/AGENTS.md" = lib.mkIf (opencodeInstructions.text != "") {
+            inherit (opencodeInstructions) text;
           };
           "opencode/skills" = lib.mkIf cfg.skills.enable {
             source = skillsDir;
@@ -963,12 +1060,14 @@
             (lib.mkIf formatOnEdit {
               inherit (nixWorkflow.opencode) formatter;
             })
-            # Varlock docs: hosted docs-search server, public, no auth.
-            (lib.mkIf mcpCfg.varlock-docs.enable {
-              mcp.servers.varlock-docs = {
-                type = "remote";
-                url = "https://docs.mcp.varlock.dev/mcp";
-              };
+            # Remote servers (varlock docs, ...): opencode's {type = remote;}.
+            (lib.mkIf (remoteMcpServers != {}) {
+              mcp.servers =
+                lib.mapAttrs (_: url: {
+                  type = "remote";
+                  inherit url;
+                })
+                remoteMcpServers;
             })
             # The caller's settings last.
             oc.settings
