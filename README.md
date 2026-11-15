@@ -89,6 +89,15 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   (nixd's option source). `hostSpec.services.nix` trusts only `root`; add
   users with `nix.settings.trusted-users`. Personal shell aliases go in the
   consumer's `programs.bash.shellAliases`.
+- **AI agents.** `homeModules.agents` (`homeSpec.agents`) gives claude,
+  pi, kimi and opencode the same skills, MCP servers, Nix workflow and
+  instructions; an agent differs only where it cannot take a setting
+  (opencode's GitHub OAuth, Claude Desktop Chat's local-only servers).
+  `instructions.text` (and `<agent>.instructions.text`) is added after
+  the machine context and the org ground rules (`groundRules.enable`,
+  from external-systems/skills); `instructions.mode = "replace"` puts
+  it in place of the built-in system prompt (pi and kimi `SYSTEM.md`, a
+  claude output style; opencode stays on `"append"`).
 - **VSCodium.** `homeModules.vscodium` (`homeSpec.programs.vscodium`) is
   VSCodium only. Everything past `enable` is per user:
   `languages.{nix,go,python,rust,gleam,zig,web,yaml,shell,markdown}.enable`,

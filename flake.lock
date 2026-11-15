@@ -337,11 +337,11 @@
         "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1794680531,
-        "narHash": "sha256-nZyIl+U5yHeOS2aNmh7rl5Hmp62aZdPQhCixtC2nRMk=",
+        "lastModified": 1794710907,
+        "narHash": "sha256-kdDp4EUFxT8WXCEx93nZN8Xxb6T7sWg7vf8eYvG8utI=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "8a04c686191637246ffd621d4c872a030e81cf73",
+        "rev": "2bacfc8371dd6988db44eaa9f52f707ad0b2399f",
         "type": "github"
       },
       "original": {
@@ -484,17 +484,16 @@
         "skills-fluxcd": "skills-fluxcd",
         "skills-google": "skills-google",
         "skills-mattpocock": "skills-mattpocock",
-        "skills-openshell": "skills-openshell",
         "skills-payloadcms": "skills-payloadcms",
         "skills-supabase": "skills-supabase",
         "skills-terraform": "skills-terraform"
       },
       "locked": {
-        "lastModified": 1794693669,
-        "narHash": "sha256-CzfuQN55JKHQAJ9vrHnw3GmwkrLfgoWtLyiCNS1h5j0=",
+        "lastModified": 1794710495,
+        "narHash": "sha256-qTW2ArdMcVxV2iJi5m8JkXBm41Sn0+483Eay9SoT5FM=",
         "owner": "external-systems",
         "repo": "skills",
-        "rev": "7ab260adccb6f3989473c6de95d853c0af52942f",
+        "rev": "d72f0fde19edcd630874f72bdae5cea1c6c4fba1",
         "type": "github"
       },
       "original": {
@@ -580,23 +579,6 @@
       "original": {
         "owner": "mattpocock",
         "repo": "skills",
-        "type": "github"
-      }
-    },
-    "skills-openshell": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1790564896,
-        "narHash": "sha256-pRLYDqeQZ2HFckZH/QUFCbp4NV7sjQ4ZyyL/6rcShQo=",
-        "owner": "NVIDIA",
-        "repo": "OpenShell",
-        "rev": "6648bd0c290efbc41ba131ee9831ee45cd431f94",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NVIDIA",
-        "ref": "v0.1.2",
-        "repo": "OpenShell",
         "type": "github"
       }
     },
