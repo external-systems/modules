@@ -12,6 +12,9 @@ _: {
   # owned by that user. sops-nix deploys it to
   #   /run/secrets/vars/shared/github-<user>/pat
   # (owner = user, mode 0400, neededFor = services).
+  # With homeSpec.programs.git.githubAuth.nix.enable, a derived generator
+  # "nix-access-tokens-<user>" renders the same PAT as a nix.conf line that
+  # the user's ~/.config/nix/nix.conf `!include`s (never the system one).
   #
   # Provisioning (interactive, human-only):
   #   clan vars generate <machine>   (prompts for github-<user> pat)
@@ -29,6 +32,7 @@ _: {
   flake.nixosModules.git = {
     config,
     lib,
+    pkgs,
     ...
   }: let
     # Read-only scan of home-manager.users (attrsOf hmModule submodule —
@@ -51,6 +55,14 @@ _: {
           ((git.enable or false) && ((git.githubAuth or {}).enabled or false)) || mcpPatConsumer
       )
       config.home-manager.users;
+
+    # Users who also want the PAT as Nix access-tokens
+    # (homeSpec.programs.git.githubAuth.nix.enable). Same defensive scan.
+    nixTokenUsers =
+      lib.filterAttrs (
+        _: hmUser: ((((((hmUser.homeSpec or {}).programs or {}).git or {}).githubAuth or {}).nix or {}).enable or false)
+      )
+      authUsers;
   in {
     config = {
       clan.core.vars.generators = lib.mkMerge (
@@ -73,6 +85,36 @@ _: {
           }
         )
         authUsers
+        # nix-access-tokens-<user>: the github-<user> PAT rendered as one
+        # nix.conf line, derived (no prompt) so the PAT var is untouched.
+        # The token is validated here: a malformed include is a hard
+        # "syntax error in configuration line" for every nix command, so
+        # it must fail at `clan vars generate`, never on the machine.
+        # Regenerate it after rotating github-<user>.
+        ++ lib.mapAttrsToList
+        (
+          userName: _: {
+            "nix-access-tokens-${userName}" = {
+              share = true;
+              dependencies = ["github-${userName}"];
+              files."access-tokens.conf" = {
+                owner = userName;
+                mode = "0400";
+                neededFor = "services";
+              };
+              runtimeInputs = with pkgs; [coreutils gnugrep];
+              script = ''
+                token=$(tr -d '[:space:]' < "$in/github-${userName}/pat")
+                if ! printf '%s' "$token" | grep -Eq '^(ghp_|github_pat_)[A-Za-z0-9_]+$'; then
+                  echo "github-${userName}/pat is not a GitHub PAT (ghp_... or github_pat_...)" >&2
+                  exit 1
+                fi
+                printf 'access-tokens = github.com=%s\n' "$token" > "$out/access-tokens.conf"
+              '';
+            };
+          }
+        )
+        nixTokenUsers
       );
 
       # Feed the generator's deployed path into every home module as
@@ -90,12 +132,21 @@ _: {
             osConfig,
             ...
           }: let
+            generators =
+              if osConfig == null
+              then {}
+              else osConfig.clan.core.vars.generators or {};
             generator = "github-${config.home.username}";
-            hasGenerator = osConfig != null && ((osConfig.clan.core.vars.generators or {}) ? ${generator});
+            nixGenerator = "nix-access-tokens-${config.home.username}";
           in {
-            homeSpec.programs.git.githubAuth.patFile =
-              lib.mkIf hasGenerator
-              osConfig.clan.core.vars.generators.${generator}.files.pat.path;
+            homeSpec.programs.git.githubAuth = {
+              patFile =
+                lib.mkIf (generators ? ${generator})
+                generators.${generator}.files.pat.path;
+              nix.accessTokensFile =
+                lib.mkIf (generators ? ${nixGenerator})
+                generators.${nixGenerator}.files."access-tokens.conf".path;
+            };
           }
         )
       ];

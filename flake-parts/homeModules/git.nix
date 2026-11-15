@@ -51,13 +51,40 @@
           default = null;
           description = "Deployed path of the user's GitHub PAT. Internal: set by nixosModules/git.nix from the clan vars generator — never hardcode it in a profile.";
         };
+        # The same PAT as Nix access-tokens, for fetching private github:
+        # flake inputs. Lives only in the user's ~/.config/nix/nix.conf:
+        # the system nix.conf (daemon, activation, boot) never sees it, so
+        # a bad token can only break this user's nix commands.
+        nix = {
+          enable = lib.mkEnableOption "Nix access-tokens for github.com from the githubAuth PAT, in the user's own nix.conf";
+          accessTokensFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Deployed path of the generated `access-tokens = github.com=...` line. Internal: set by nixosModules/git.nix from the nix-access-tokens-<user> clan var — never hardcode it in a profile.";
+          };
+        };
       };
     };
 
     config = lib.mkIf cfg.enable {
+      assertions = [
+        {
+          assertion = cfg.githubAuth.nix.enable -> cfg.githubAuth.enabled;
+          message = "homeSpec.programs.git.githubAuth.nix.enable needs homeSpec.programs.git.githubAuth.enabled: the Nix token is derived from the githubAuth PAT.";
+        }
+      ];
+
       home.packages = with pkgs; [
         gh
       ];
+
+      # `!include` (never plain `include`): a missing or unreadable file is
+      # skipped silently, so nix keeps working before the var is generated
+      # or deployed. The clan var generator validates the token, so the
+      # included file is always one well-formed line.
+      nix.extraOptions = lib.mkIf (cfg.githubAuth.nix.enable && cfg.githubAuth.nix.accessTokensFile != null) ''
+        !include ${cfg.githubAuth.nix.accessTokensFile}
+      '';
 
       programs = {
         lazygit.enable = true;
