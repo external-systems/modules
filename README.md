@@ -98,6 +98,9 @@ e.g. `nixosModules.tailscale` or `homeModules.starship`.
   from external-systems/skills); `instructions.mode = "replace"` puts
   it in place of the built-in system prompt (pi and kimi `SYSTEM.md`, a
   claude output style; opencode stays on `"append"`).
+  `gitHookGuard.enable` (on by default) blocks claude's shell commands
+  that skip git hooks (`--no-verify`, `git commit -n`, core.hooksPath,
+  `PREK_ALLOW_NO_CONFIG`/`SKIP`), as the org ground rules require.
 - **VSCodium.** `homeModules.vscodium` (`homeSpec.programs.vscodium`) is
   VSCodium only. Everything past `enable` is per user:
   `languages.{nix,go,python,rust,gleam,zig,web,yaml,shell,markdown}.enable`,

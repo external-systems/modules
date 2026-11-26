@@ -98,6 +98,30 @@
         "type": "github"
       }
     },
+    "git-hooks": {
+      "inputs": {
+        "flake-compat": [
+          "org-pkgs"
+        ],
+        "nixpkgs": [
+          "org-pkgs",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1795608474,
+        "narHash": "sha256-CwC7f1DripMBQjB7BozobprSYiA8Cn9rz8vsBthWJwk=",
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "rev": "5c6bf7c418b4abf003e6d00d231e87f5e6ad5230",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cachix",
+        "repo": "git-hooks.nix",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -172,11 +196,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794064691,
-        "narHash": "sha256-a2/vYgnX7W3MZurxMDkY8y+sIJuGT2z08tUER3wcbxY=",
+        "lastModified": 1794808658,
+        "narHash": "sha256-RbvK/ghvMuWWx/riUqtCZCxjZFji2n3onTo2Kg60T3s=",
         "owner": "numtide",
         "repo": "llm-agents.nix",
-        "rev": "3d32ec231e746b4253bda8bd427025b4dac51785",
+        "rev": "733d5b0fa81d5aad7c623dca8d8170ce411fba1d",
         "type": "github"
       },
       "original": {
@@ -324,6 +348,7 @@
     "org-pkgs": {
       "inputs": {
         "flake-parts": "flake-parts",
+        "git-hooks": "git-hooks",
         "import-tree": "import-tree",
         "llm-agents": "llm-agents",
         "moscripts": "moscripts",
@@ -337,11 +362,11 @@
         "zen-browser": "zen-browser"
       },
       "locked": {
-        "lastModified": 1794710907,
-        "narHash": "sha256-kdDp4EUFxT8WXCEx93nZN8Xxb6T7sWg7vf8eYvG8utI=",
+        "lastModified": 1795691814,
+        "narHash": "sha256-AwEuB0gohCMXSpSYwykwwRLbi02B7hegbshQihbtF54=",
         "owner": "external-systems",
         "repo": "pkgs",
-        "rev": "2bacfc8371dd6988db44eaa9f52f707ad0b2399f",
+        "rev": "36cc52f2599b2415f726b82f35745ac15ed6fd6e",
         "type": "github"
       },
       "original": {
@@ -489,11 +514,11 @@
         "skills-terraform": "skills-terraform"
       },
       "locked": {
-        "lastModified": 1794710495,
-        "narHash": "sha256-qTW2ArdMcVxV2iJi5m8JkXBm41Sn0+483Eay9SoT5FM=",
+        "lastModified": 1795692051,
+        "narHash": "sha256-N5Rk6VAmDyGZNlCsuCbyTdiCDCvYw8b2TVEmTrxYF7c=",
         "owner": "external-systems",
         "repo": "skills",
-        "rev": "d72f0fde19edcd630874f72bdae5cea1c6c4fba1",
+        "rev": "ec7cff722867607b77ed7b6887aff22bf9089bd5",
         "type": "github"
       },
       "original": {
