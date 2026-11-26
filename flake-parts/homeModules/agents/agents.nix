@@ -168,6 +168,9 @@
     formatOnEdit = wf.enable && wf.formatOnEdit;
     nixWorkflow = import ./_nix-workflow.nix {inherit lib pkgs;};
 
+    # ---- Git hook guard (homeSpec.agents.gitHookGuard) ---- #
+    gitHookGuard = import ./_git-hook-guard.nix {inherit lib pkgs;};
+
     # ---- Shared MCP bindings (homeSpec.agents.mcp.*) ---- #
     # PAT file used by the wrapper: explicit patFile override or the
     # canonical sops-nix deployment path of the per-user "github-<user>"
@@ -267,6 +270,9 @@
       })
       (lib.optionalAttrs formatOnEdit {
         hooks.PostToolUse = [nixWorkflow.claude.hook];
+      })
+      (lib.optionalAttrs cfg.gitHookGuard.enable {
+        hooks.PreToolUse = [gitHookGuard.claude.hook];
       })
       (lib.optionalAttrs skillsRuntimeEnabled {inherit (skillsRuntime) env;})
       (lib.optionalAttrs (claudeInstructions.mode == "replace") {outputStyle = claudeOutputStyle;})
@@ -442,6 +448,19 @@
           default = true;
           description = "Format every .nix file with alejandra right after an agent edits it (claude and kimi hooks, opencode formatter, pi extension). Only with nixWorkflow.enable.";
         };
+      };
+
+      # ---- Git hook guard: homeSpec.agents.gitHookGuard.* ---- #
+      gitHookGuard.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Block agent shell commands that skip git hooks: `--no-verify`,
+          `git commit -n`, core.hooksPath, PREK_ALLOW_NO_CONFIG or SKIP on
+          a git command (claude, a PreToolUse hook on Bash). The org
+          shell's hooks are part of the gate; the owner can still skip one
+          from their own shell.
+        '';
       };
 
       # ---- pi: homeSpec.agents.pi.* ---- #

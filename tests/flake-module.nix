@@ -250,6 +250,7 @@
         assert expect (lib.elem "Bash(nix eval:*)" claude.permissions.allow) "nix eval not allowed";
         assert expect (claude.env ? BASH_MAX_TIMEOUT_MS && claude.env ? NODE_PATH) "claude env misses the timeouts or the skills runtime";
         assert expect (lib.length claude.hooks.PostToolUse == 1) "no .nix format hook";
+        assert expect (lib.length claude.hooks.PreToolUse == 1) "no git hook guard";
         assert expect (!(claude ? mcpServers)) "settings.json carries mcpServers";
         assert expect (hm.home.activation ? claudeMcpServers) "no ~/.claude.json MCP sync";
         assert expect (hm.programs.opencode.settings.mcp.servers.github.type == "local") "opencode github not on the pat server";
@@ -268,6 +269,55 @@
         assert expect (lib.hasInfix "tool_result" files.".pi/agent/extensions/nix-workflow.ts".text) "pi extension does not format";
         assert expect (hm.home.activation ? kimiNixWorkflow) "no kimi config.toml merge";
           pkgs.writeText "agents-wiring" "ok";
+
+      # The git hook guard blocks every way an agent could skip git hooks
+      # and lets ordinary git (and text that only mentions a flag) through.
+      agents-git-hook-guard = let
+        guard = (import ../flake-parts/homeModules/agents/_git-hook-guard.nix {inherit lib pkgs;}).package;
+        blocked = [
+          "git commit --no-verify -m wip"
+          "git push --no-verify"
+          "git commit -n -m wip"
+          "git commit -anm wip"
+          "cd repo && git commit -qn -m wip"
+          "git -C repo commit --no-verify"
+          "git -c core.hooksPath=/dev/null commit -m wip"
+          "git config core.hooksPath /dev/null"
+          "PREK_ALLOW_NO_CONFIG=1 git commit -m wip"
+          "SKIP=fmt git commit -m wip"
+          "env SKIP=fmt git commit -m wip"
+          "bash -c 'git commit --no-verify -m wip'"
+          "git merge --no-verify feature"
+        ];
+        allowed = [
+          "git commit -m wip"
+          "git commit -am 'fix -n handling'"
+          "git commit -m 'never use --no-verify'"
+          "git commit -F msg -m n"
+          "git push -n origin HEAD"
+          "git log -n 3"
+          "grep -rn no-verify docs"
+          "echo --no-verify"
+          "git status && git push -u origin HEAD"
+        ];
+        expectExit = verdict:
+          if verdict == "blocked"
+          then "2"
+          else "0";
+        run = verdict: command: ''
+          printf '%s' ${lib.escapeShellArg (builtins.toJSON {tool_input = {inherit command;};})} | ${lib.getExe guard} 2>/dev/null && got=0 || got=$?
+          if [ "$got" != ${expectExit verdict} ]; then
+            echo "agents-git-hook-guard: expected ${verdict} (got exit $got): "${lib.escapeShellArg command} >&2
+            exit 1
+          fi
+        '';
+      in
+        pkgs.runCommand "agents-git-hook-guard" {} ''
+          ${lib.concatMapStrings (run "blocked") blocked}
+          ${lib.concatMapStrings (run "allowed") allowed}
+          printf '%s' 'not json' | ${lib.getExe guard}
+          touch $out
+        '';
 
       # Instructions reach every agent the same way: machine context, the
       # org ground rules, the user's text, then the agent's own text;
